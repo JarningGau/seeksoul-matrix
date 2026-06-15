@@ -1,6 +1,11 @@
 # Repository Guidelines
 
-Contributor guide for **seeksoul-matrix** — SeepSpace spatial methylation (DD-MET5, Slide-Tag–like chemistry). This repository is under active development. **`dbit-matrix/` is a reference template only** — study its layout and patterns when building seeksoul-matrix; do not treat it as the production codebase or modify it unless explicitly updating the template.
+Contributor guide for **seeksoul-matrix** — SeepSpace spatial methylation (DD-MET5, Slide-Tag–like chemistry). This repository is under active development.
+
+Two **reference templates** sit alongside the production codebase — study them when building seeksoul-matrix; do not treat either as the production codebase or modify them unless explicitly updating the template:
+
+- **`dbit-matrix/`** — engineering patterns (thin stage scripts, JSON workflows, `make_cmd.py` drivers, stage contracts, docs layout).
+- **`SeekSoulMethyl/`** — SeekSoul's official single-cell methylation + RNA data-processing pipeline; domain reference for DD-MET3/DD-MET5 chemistry, barcode rules, stage logic, and analysis steps.
 
 ## Project Structure & Module Organization
 
@@ -9,15 +14,16 @@ seeksoul-matrix/
 ├── README.md              # DD-MET5 chemistry, barcode rules, whitelist path
 ├── pixi.toml              # Root workspace (linux-64)
 ├── whitelist/             # Cell-barcode whitelists (e.g. DD-MET5/U3CB_methylation.txt.gz)
-├── scripts/               # Stage scripts (to be added)
-├── workflow/              # JSON workflow configs (to be added)
-├── docs/                  # Project documentation (to be added)
-└── dbit-matrix/           # Reference template — patterns for stages, drivers, docs
+├── scripts/               # Stage scripts and workflow driver (make_cmd.py)
+├── workflow/              # JSON workflow configs
+├── docs/                  # Project documentation and stage contracts
+├── dbit-matrix/           # Reference template — engineering patterns
+└── SeekSoulMethyl/        # Reference template — SeekSoul official methylation pipeline
 ```
 
 Barcodes for methylation data must not contain `C` (enzymatic C→T conversion). Fixed sequences (TSO, 17L, ME) retain `C` for conversion-rate QC — see `README.md`.
 
-When adding seeksoul-matrix code, mirror the template's conventions: thin stage scripts, JSON-driven workflows, `make_cmd.py` drivers, and explicit stage contracts.
+When adding seeksoul-matrix code, mirror **dbit-matrix** engineering conventions (thin stage scripts, JSON-driven workflows, `make_cmd.py` drivers, explicit stage contracts) and align stage behavior with **SeekSoulMethyl** where chemistry and analysis steps overlap.
 
 ## Build, Test, and Development Commands
 
@@ -27,17 +33,21 @@ When adding seeksoul-matrix code, mirror the template's conventions: thin stage 
 pixi install
 ```
 
-**Reference template** (read-only guidance; not the seeksoul-matrix runtime):
+**Reference templates** (read-only guidance; not the seeksoul-matrix runtime):
 
 ```bash
-cd dbit-matrix && pixi install   # explore patterns only
+cd dbit-matrix && pixi install        # engineering patterns
+# SeekSoulMethyl uses conda — see SeekSoulMethyl/README.md
 ```
 
-Useful template references: `dbit-matrix/docs/developers/architecture.md`, `contracts.md`, and `dbit-matrix/AGENTS.md`.
+Useful references:
+
+- **dbit-matrix:** `docs/developers/architecture.md`, `contracts.md`, `AGENTS.md`
+- **SeekSoulMethyl:** `README.md` (chemistry, installation), `nf/` (Nextflow workflow), `nf/bin/` (stage scripts), `docs/` (BAM dedup, reference genome)
 
 ## Coding Style & Naming Conventions
 
-Follow the template's engineering patterns when implementing seeksoul-matrix:
+Follow **dbit-matrix** engineering patterns when implementing seeksoul-matrix; consult **SeekSoulMethyl** for methylation-specific stage logic and chemistry details:
 
 - **Python 3.11**; 4-space indentation; `snake_case` for modules and functions.
 - Thin, explicit single-stage scripts; workflow parameters in `workflow/*.json`.
@@ -99,7 +109,7 @@ One commit per logical change. PRs should link issues and describe chemistry or 
 
 ## Agent-Specific Instructions
 
-- Build new functionality at the **repository root**, adapting patterns from `dbit-matrix/` — do not extend the template in place.
+- Build new functionality at the **repository root**, adapting engineering patterns from `dbit-matrix/` and domain logic from `SeekSoulMethyl/` — do not extend either template in place.
 - Do not change stage input/output contracts silently; document contracts in `docs/` as they are defined.
 - Prefer the simplest fix that preserves required behavior.
 - Do not overwrite user changes without explicit permission.
