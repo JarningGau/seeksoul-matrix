@@ -42,8 +42,27 @@ cd dbit-matrix && pixi install        # engineering patterns
 
 Useful references:
 
+- **seeksoul-matrix:** `docs/developers/contracts.md` (stage I/O), `docs/developers/logs.md` (validation log)
 - **dbit-matrix:** `docs/developers/architecture.md`, `contracts.md`, `AGENTS.md`
 - **SeekSoulMethyl:** `README.md` (chemistry, installation), `nf/` (Nextflow workflow), `nf/bin/` (stage scripts), `docs/` (BAM dedup, reference genome)
+
+Dry-run helpers (workflow driver):
+
+```bash
+pixi run fastp-dry-run    # fastp_split script generation
+pixi run demux-dry-run    # demux_extract_bc script generation
+```
+
+## Pipeline stages
+
+Implemented stages (`scripts/make_cmd.py`; contracts in `docs/developers/contracts.md`):
+
+| Stage | Scripts | Status |
+|-------|---------|--------|
+| `fastp_split` | `scripts/fastp_split.py` | implemented |
+| `demux_extract_bc` | `scripts/demux_extract_bc.py`, `scripts/aggregate_ct_qc.py` | **validated** |
+
+`demux_extract_bc` was validated on real DD-MET5 shard FASTQ (~496k reads/chunk; ~339k valid reads/chunk; C→T ~0.997). Outputs: per-chunk `linker.tsv`, `stats.json`, forward/reverse FASTQ; sample-level `qc.CtoT.tsv`. Details in `docs/developers/logs.md` (2026-06-15).
 
 ## Coding Style & Naming Conventions
 
@@ -57,7 +76,7 @@ Follow **dbit-matrix** engineering patterns when implementing seeksoul-matrix; c
 
 ## Testing Guidelines
 
-No seeksoul-matrix test suite yet. When adding tests, follow the template's regression style in `dbit-matrix/docs/maintenance/`. Before finishing workflow changes, run relevant CLI `--help`, `--version`, and `--dry-run`.
+No automated test suite yet. `fastp_split` and `demux_extract_bc` have been manually validated (see `docs/developers/logs.md`). When adding tests, follow the template's regression style in `dbit-matrix/docs/maintenance/`. Before finishing workflow changes, run relevant CLI `--help`, `--version`, and `--dry-run` (or `pixi run fastp-dry-run` / `pixi run demux-dry-run` for the workflow driver).
 
 ## Lightweight Development Loop
 
