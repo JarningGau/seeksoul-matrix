@@ -13,12 +13,14 @@ from pathlib import Path
 from _version import __version__
 import workflow_input_checks as wic
 
-STAGE_SEQUENCE = ["fastp_split"]
+STAGE_SEQUENCE = ["fastp_split", "demux_extract_bc"]
 STAGE_CHOICES = STAGE_SEQUENCE
 SLURM_NEST_STAGE_KEYS = frozenset(STAGE_SEQUENCE)
 STAGE_REQUIRED_FIELDS = {
     "fastp_split": ["r1", "r2", "number_of_split_parts"],
+    "demux_extract_bc": ["barcode_whitelist"],
 }
+DEFAULT_BARCODE_WHITELIST = "whitelist/DD-MET5/U3CB_methylation.txt.gz"
 
 
 def resolve_env_executable(name: str) -> str:
@@ -79,6 +81,20 @@ def parse_args() -> argparse.Namespace:
         ),
     )
     parser.add_argument(
+        "--barcode-whitelist",
+        help=f"Cell barcode whitelist for demux. Default: {DEFAULT_BARCODE_WHITELIST}.",
+    )
+    parser.add_argument(
+        "--barcode-hamming-distance",
+        type=int,
+        help="Hamming distance for demux barcode correction. Default: 1.",
+    )
+    parser.add_argument(
+        "--gzip-level",
+        type=int,
+        help="gzip level for demux output FASTQ. Default: 6.",
+    )
+    parser.add_argument(
         "--submit",
         action="store_true",
         help="Submit immediately after generating command file.",
@@ -129,6 +145,101 @@ def build_fastp_split_command(args: argparse.Namespace, sample_work: Path) -> st
     return quoted(command)
 
 
+def build_demux_chunk_command(
+    args: argparse.Namespace, r1_path: Path, r2_path: Path, out_prefix: Path
+) -> str:
+    return quoted(
+        [
+            sys.executable,
+            "scripts/demux_extract_bc.py",
+            str(r1_path),
+            str(r2_path),
+            "--barcode-whitelist",
+            args.barcode_whitelist,
+            "--output-prefix",
+            str(out_prefix),
+            "--barcode-hamming-distance",
+            str(args.barcode_hamming_distance),
+            "--gzip-level",
+            str(args.gzip_level),
+        ]
+    )
+
+
+def build_aggregate_ct_command(demux_dir: Path) -> str:
+    return quoted(
+        [
+            sys.executable,
+            "scripts/aggregate_ct_qc.py",
+            "--demux-dir",
+            str(demux_dir),
+        ]
+    )
+
+
+def build_demux_local_batch_command(
+    args: argparse.Namespace, sample_work: Path, number_of_split_parts: int | None = None
+) -> str:
+    demux_dir = sample_work / "demux"
+    aggregate_cmd = build_aggregate_ct_command(demux_dir)
+    lines = [
+        f"demux_dir={shlex.quote(str(demux_dir))}",
+        'mkdir -p "$demux_dir"',
+        "",
+    ]
+    chunks = discover_demux_chunks(sample_work, number_of_split_parts)
+    total = len(chunks)
+    for idx, (chunk_id, r1_path, r2_path, out_prefix) in enumerate(chunks, start=1):
+        percent = idx * 100 // total if total else 100
+        lines.append(
+            f"echo '[demux] {percent:3d}% ({idx}/{total}) {chunk_id}'"
+        )
+        lines.append(
+            build_demux_chunk_command(args, r1_path, r2_path, out_prefix)
+        )
+        lines.append("")
+    lines.extend([aggregate_cmd, "", 'echo "[demux] done"'])
+    return "\n".join(lines)
+
+
+def build_demux_slurm_submit_command(sample_work: Path) -> str:
+    command_dir = sample_work / "commands"
+    lines = [
+        "#!/usr/bin/env bash",
+        "set -euo pipefail",
+        "",
+        f'SCRIPT_DIR={shlex.quote(str(command_dir))}',
+        'job_ids=""',
+        'for script in "$SCRIPT_DIR"/02_demux_extract_bc_*.sbatch; do',
+        '  [ -f "$script" ] || continue',
+        '  jid=$(sbatch --parsable "$script")',
+        '  job_ids="${job_ids}:${jid}"',
+        "done",
+        'if [ -z "$job_ids" ]; then',
+        '  echo "[demux] no chunk sbatch scripts found"',
+        "  exit 1",
+        "fi",
+        'sbatch --dependency=afterok"${job_ids}" "$SCRIPT_DIR/02_aggregate_ct_qc.sbatch"',
+        'echo "[demux] submitted aggregate job with dependency afterok${job_ids}"',
+    ]
+    return "\n".join(lines)
+
+
+def discover_demux_chunks(
+    sample_work: Path, number_of_split_parts: int | None = None
+) -> list[tuple[str, Path, Path, Path]]:
+    shard_dir = sample_work / "shard_fastq"
+    demux_dir = sample_work / "demux"
+    shards = wic.discover_fastp_shards(shard_dir)
+    if not shards and number_of_split_parts:
+        shards = wic.plan_fastp_shards(shard_dir, number_of_split_parts)
+    chunks: list[tuple[str, Path, Path, Path]] = []
+    for chunk_id, r1_path, r2_path in shards:
+        out_prefix = demux_dir / chunk_id
+        chunks.append((chunk_id, r1_path, r2_path, out_prefix))
+    return chunks
+
+
 def write_text(path: Path, content: str) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_text(content, encoding="utf-8")
@@ -157,6 +268,7 @@ def validate_required_for_stage(stage: str, settings: dict) -> None:
 def validate_inputs_for_stage(
     stage: str,
     settings: dict,
+    sample_work: Path,
     *,
     skip_workdir_inputs: bool = False,
 ) -> None:
@@ -166,6 +278,19 @@ def validate_inputs_for_stage(
         wic.require_file("r1", wic.resolve_config_path(settings["r1"]))
         wic.require_file("r2", wic.resolve_config_path(settings["r2"]))
         wic.require_optional_executable_path("fastp_bin", settings["fastp_bin"])
+    elif stage == "demux_extract_bc":
+        wic.require_file(
+            "barcode_whitelist",
+            wic.resolve_config_path(settings["barcode_whitelist"]),
+        )
+        if not skip_workdir_inputs:
+            shard_dir = sample_work / "shard_fastq"
+            shards = wic.discover_fastp_shards(shard_dir)
+            if not shards:
+                raise ValueError(f"no fastp shards found under {shard_dir}")
+            for _chunk_id, r1_path, r2_path in shards:
+                wic.require_file(f"shard_fastq/{r1_path.name}", r1_path)
+                wic.require_file(f"shard_fastq/{r2_path.name}", r2_path)
     else:
         raise ValueError(f"unsupported stage for input validation: {stage}")
 
@@ -210,6 +335,11 @@ def resolve_settings(args: argparse.Namespace) -> dict:
             args.number_of_split_parts, cfg.get("number_of_split_parts")
         ),
         "fastp_bin": pick(args.fastp_bin, cfg.get("fastp_bin")),
+        "barcode_whitelist": pick(args.barcode_whitelist, cfg.get("barcode_whitelist")),
+        "barcode_hamming_distance": pick(
+            args.barcode_hamming_distance, cfg.get("barcode_hamming_distance")
+        ),
+        "gzip_level": pick(args.gzip_level, cfg.get("gzip_level")),
         "slurm_partition": pick(args.slurm_partition, stage_slurm_cfg.get("partition")),
         "slurm_mem": pick(args.slurm_mem, stage_slurm_cfg.get("mem")),
         "slurm_cpus_per_task": pick(
@@ -230,6 +360,14 @@ def resolve_settings(args: argparse.Namespace) -> dict:
     settings["fastp_bin"] = normalize_executable_setting(
         settings["fastp_bin"], "fastp"
     )
+    if stage == "demux_extract_bc":
+        settings["barcode_whitelist"] = (
+            settings["barcode_whitelist"] or DEFAULT_BARCODE_WHITELIST
+        )
+        settings["barcode_hamming_distance"] = int(
+            settings["barcode_hamming_distance"] or 1
+        )
+        settings["gzip_level"] = int(settings["gzip_level"] or 6)
     settings["slurm_partition"] = settings["slurm_partition"] or "cpu"
     settings["slurm_mem"] = settings["slurm_mem"] or "16G"
     settings["slurm_cpus_per_task"] = settings["slurm_cpus_per_task"] or 8
@@ -299,6 +437,7 @@ def main() -> int:
     validate_inputs_for_stage(
         settings["stage"],
         settings,
+        sample_work,
         skip_workdir_inputs=bool(args.skip_workdir_input_checks),
     )
 
@@ -340,6 +479,94 @@ def main() -> int:
             )
             generate_slurm_script(command, script_path, log_dir, slurm_args)
         generated_scripts.append(script_path)
+    elif settings["stage"] == "demux_extract_bc":
+        command_args = argparse.Namespace(
+            barcode_whitelist=settings["barcode_whitelist"],
+            barcode_hamming_distance=settings["barcode_hamming_distance"],
+            gzip_level=settings["gzip_level"],
+        )
+        demux_dir = sample_work / "demux"
+        if settings["runner"] == "local":
+            script_path = command_dir / "02_demux_extract_bc.sh"
+            command = build_demux_local_batch_command(
+                command_args, sample_work, settings.get("number_of_split_parts")
+            )
+            print(f"[make_cmd] runner={settings['runner']}")
+            print(f"[make_cmd] stage={settings['stage']}")
+            print(f"[make_cmd] sample_id={settings['sample_id']}")
+            print(f"[make_cmd] script={script_path}")
+            print(f"[make_cmd] command={command}")
+            if settings["dry_run"]:
+                return 0
+            generate_local_script(command, script_path)
+            generated_scripts.append(script_path)
+        else:
+            chunks = discover_demux_chunks(
+                sample_work, settings.get("number_of_split_parts")
+            )
+            if not chunks:
+                raise ValueError("no fastp shards found for demux script generation")
+            print(f"[make_cmd] runner={settings['runner']}")
+            print(f"[make_cmd] stage={settings['stage']}")
+            print(f"[make_cmd] sample_id={settings['sample_id']}")
+            print(f"[make_cmd] chunk_count={len(chunks)}")
+            for chunk_id, r1_path, r2_path, out_prefix in chunks:
+                base_name = f"02_demux_extract_bc_{chunk_id}"
+                script_path = command_dir / f"{base_name}.sbatch"
+                command = build_demux_chunk_command(
+                    command_args, r1_path, r2_path, out_prefix
+                )
+                chunk_output = settings["slurm_output"].replace(
+                    "%x", f"seeksoul_demux_{settings['sample_id']}_{chunk_id}"
+                )
+                chunk_error = settings["slurm_error"].replace(
+                    "%x", f"seeksoul_demux_{settings['sample_id']}_{chunk_id}"
+                )
+                print(f"[make_cmd] script={script_path}")
+                print(f"[make_cmd] command={command}")
+                if not settings["dry_run"]:
+                    slurm_args = argparse.Namespace(
+                        job_name=f"seeksoul_demux_{settings['sample_id']}_{chunk_id}",
+                        slurm_partition=settings["slurm_partition"],
+                        slurm_mem=settings["slurm_mem"],
+                        slurm_cpus_per_task=settings["slurm_cpus_per_task"],
+                        slurm_output=chunk_output,
+                        slurm_error=chunk_error,
+                    )
+                    generate_slurm_script(command, script_path, log_dir, slurm_args)
+                generated_scripts.append(script_path)
+
+            aggregate_script = command_dir / "02_aggregate_ct_qc.sbatch"
+            aggregate_command = build_aggregate_ct_command(demux_dir)
+            aggregate_output = settings["slurm_output"].replace(
+                "%x", f"seeksoul_aggregate_ct_{settings['sample_id']}"
+            )
+            aggregate_error = settings["slurm_error"].replace(
+                "%x", f"seeksoul_aggregate_ct_{settings['sample_id']}"
+            )
+            print(f"[make_cmd] script={aggregate_script}")
+            print(f"[make_cmd] command={aggregate_command}")
+            if not settings["dry_run"]:
+                slurm_args = argparse.Namespace(
+                    job_name=f"seeksoul_aggregate_ct_{settings['sample_id']}",
+                    slurm_partition=settings["slurm_partition"],
+                    slurm_mem=settings["slurm_mem"],
+                    slurm_cpus_per_task=settings["slurm_cpus_per_task"],
+                    slurm_output=aggregate_output,
+                    slurm_error=aggregate_error,
+                )
+                generate_slurm_script(
+                    aggregate_command, aggregate_script, log_dir, slurm_args
+                )
+                submit_script_path = command_dir / "02_demux_extract_bc_submit.sh"
+                generate_local_script(
+                    build_demux_slurm_submit_command(sample_work),
+                    submit_script_path,
+                )
+                generated_scripts.append(aggregate_script)
+                generated_scripts.append(submit_script_path)
+            else:
+                generated_scripts.append(aggregate_script)
     else:
         raise ValueError(f"unsupported stage: {settings['stage']}")
 

@@ -7,7 +7,9 @@ version = "0.1.0"
 
 [tasks]
 fastp-dry-run = "python scripts/make_cmd.py --workflow-config workflow/dd_met5_test.json --skip-workdir-input-checks --dry-run"
+demux-dry-run = "python scripts/make_cmd.py --workflow-config workflow/dd_met5_test.json --stage demux_extract_bc --skip-workdir-input-checks --dry-run"
 
 [dependencies]
 python = "3.11.*"
 fastp = "0.24.*"
+cutadapt = "5.0.*"
