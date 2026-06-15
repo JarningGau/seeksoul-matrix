@@ -73,7 +73,7 @@ Briefly declare the task:
 ### After editing
 
 1. Run the most relevant lightweight check available — e.g. script on a small input, one representative pipeline step, expected output files, existing tests, or generated reports/tables.
-2. Update `doc/dev/log.md` with a short entry:
+2. Update `docs/developers/logs.md` with a short entry:
 
    - **date**
    - **task name**

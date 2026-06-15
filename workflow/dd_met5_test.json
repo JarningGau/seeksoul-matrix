@@ -1,0 +1,18 @@
+{
+    "runner": "local",
+    "stage": "fastp_split",
+    "sample_id": "dd-met5-example",
+    "r1": "data/test_R1.fastq.gz",
+    "r2": "data/test_R2.fastq.gz",
+    "work_root": "work",
+    "fastp_threads": 2,
+    "number_of_split_parts": 2,
+    "fastp_bin": "fastp",
+    "slurm": {
+        "fastp_split": {
+            "partition": "amd-ep2",
+            "mem": "16G",
+            "cpus_per_task": 8
+        }
+    }
+}

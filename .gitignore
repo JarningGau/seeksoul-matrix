@@ -3,5 +3,9 @@
 !.pixi/config.toml
 
 data/*
+work/*
 
 dbit-matrix/*
+SeekSoulMethyl/*
+
+__pycache__
