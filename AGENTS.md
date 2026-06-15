@@ -49,8 +49,18 @@ Useful references:
 Dry-run helpers (workflow driver):
 
 ```bash
-pixi run fastp-dry-run    # fastp_split script generation
-pixi run demux-dry-run    # demux_extract_bc script generation
+pixi run fastp-dry-run       # fastp_split script generation
+pixi run demux-dry-run       # demux_extract_bc script generation
+pixi run e2e-dry-run         # --stage all (local run.sh) dry-run
+pixi run e2e-slurm-dry-run   # --stage all (Slurm run.sbatch) dry-run
+```
+
+End-to-end script generation and run:
+
+```bash
+pixi run python scripts/make_cmd.py --workflow-config workflow/dd_met5_test.json --stage all
+bash work/<sample>/commands/run.sh
+# Slurm: same with --runner slurm → work/<sample>/commands/run.sbatch
 ```
 
 ## Pipeline stages
@@ -59,10 +69,12 @@ Implemented stages (`scripts/make_cmd.py`; contracts in `docs/developers/contrac
 
 | Stage | Scripts | Status |
 |-------|---------|--------|
-| `fastp_split` | `scripts/fastp_split.py` | implemented |
+| `fastp_split` | `scripts/fastp_split.py` | **validated** |
 | `demux_extract_bc` | `scripts/demux_extract_bc.py`, `scripts/aggregate_ct_qc.py` | **validated** |
 
-`demux_extract_bc` was validated on real DD-MET5 shard FASTQ (~496k reads/chunk; ~339k valid reads/chunk; C→T ~0.997). Outputs: per-chunk `linker.tsv`, `stats.json`, forward/reverse FASTQ; sample-level `qc.CtoT.tsv`. Details in `docs/developers/logs.md` (2026-06-15).
+`--stage all` generates per-stage scripts under `work/<sample>/commands/` plus a driver: `run.sh` (local) or `run.sbatch` (Slurm DAG: fastp → parallel demux chunks → aggregate). Slurm also emits per-chunk `02_demux_extract_bc_<chunk>.sbatch`, `02_aggregate_ct_qc.sbatch`, and standalone `02_demux_extract_bc_submit.sh`.
+
+End-to-end (`fastp_split` → `demux_extract_bc`) was validated on `data/test_R1.fastq.gz` / `data/test_R2.fastq.gz` via `run.sh` (~1M reads in, 2 shards; ~339k valid reads/chunk; C→T ~0.997; 23,610 barcodes in `qc.CtoT.tsv`). Slurm sbatch generation was validated; cluster submit not tested in dev. Per-stage and e2e details in `docs/developers/logs.md` (2026-06-15).
 
 ## Coding Style & Naming Conventions
 
@@ -76,7 +88,7 @@ Follow **dbit-matrix** engineering patterns when implementing seeksoul-matrix; c
 
 ## Testing Guidelines
 
-No automated test suite yet. `fastp_split` and `demux_extract_bc` have been manually validated (see `docs/developers/logs.md`). When adding tests, follow the template's regression style in `dbit-matrix/docs/maintenance/`. Before finishing workflow changes, run relevant CLI `--help`, `--version`, and `--dry-run` (or `pixi run fastp-dry-run` / `pixi run demux-dry-run` for the workflow driver).
+No automated test suite yet. `fastp_split`, `demux_extract_bc`, and the two-stage end-to-end path (`--stage all` / `run.sh`) have been manually validated (see `docs/developers/logs.md`). When adding tests, follow the template's regression style in `dbit-matrix/docs/maintenance/`. Before finishing workflow changes, run relevant CLI `--help`, `--version`, and `--dry-run` (or `pixi run fastp-dry-run` / `pixi run demux-dry-run` / `pixi run e2e-dry-run` for the workflow driver).
 
 ## Lightweight Development Loop
 
