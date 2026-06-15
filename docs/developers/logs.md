@@ -1,5 +1,32 @@
 # Development log
 
+## 2026-06-15 — end-to-end workflow driver (`--stage all`)
+
+**Task:** Consolidate `fastp_split` + `demux_extract_bc` with `run.sh` / `run.sbatch` generation; validate local e2e run and Slurm script generation.
+
+**Files changed:**
+- `scripts/make_cmd.py`
+- `pixi.toml`
+
+**Summary:**
+- Added `--stage all` to generate per-stage scripts plus `work/<sample>/commands/run.sh` (local) or `run.sbatch` (Slurm DAG driver).
+- Slurm demux: per-chunk `02_demux_extract_bc_<chunk>.sbatch`, `02_aggregate_ct_qc.sbatch`, and standalone `02_demux_extract_bc_submit.sh`; `run.sbatch` chains fastp → parallel demux chunks → aggregate.
+- Added `pixi run e2e-dry-run` and `pixi run e2e-slurm-dry-run` helpers.
+
+**Checks performed:**
+- `pixi run e2e-dry-run`
+- `pixi run e2e-slurm-dry-run`
+- `pixi run python scripts/make_cmd.py --workflow-config workflow/dd_met5_test.json --stage all` (generated `run.sh`)
+- `pixi run python scripts/make_cmd.py --workflow-config workflow/dd_met5_test.json --stage all --runner slurm` (generated `run.sbatch` + chunk sbatch files)
+- `bash work/dd-met5-example/commands/run.sh` on `data/test_R1.fastq.gz` / `data/test_R2.fastq.gz`
+  - fastp: 992780 reads/chunk pass filter; 2 shards
+  - demux chunk 0001: valid=339315, CtoT=0.997; chunk 0002: valid=339753, CtoT=0.997
+  - `qc.CtoT.tsv`: 23610 barcodes
+
+**Status:** done
+
+**Notes:** Slurm `run.sbatch` was generated and inspected; not submitted (no Slurm cluster in dev environment). Use `bash work/<sample>/commands/run.sbatch` on a Slurm login node to submit the DAG.
+
 ## 2026-06-15 — demux_extract_bc stage
 
 **Task:** Implement DD-MET5 `demux_extract_bc` stage with linker.tsv / stats.json / qc.CtoT.tsv outputs.

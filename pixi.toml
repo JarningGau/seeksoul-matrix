@@ -8,6 +8,8 @@ version = "0.1.0"
 [tasks]
 fastp-dry-run = "python scripts/make_cmd.py --workflow-config workflow/dd_met5_test.json --skip-workdir-input-checks --dry-run"
 demux-dry-run = "python scripts/make_cmd.py --workflow-config workflow/dd_met5_test.json --stage demux_extract_bc --skip-workdir-input-checks --dry-run"
+e2e-dry-run = "python scripts/make_cmd.py --workflow-config workflow/dd_met5_test.json --stage all --dry-run"
+e2e-slurm-dry-run = "python scripts/make_cmd.py --workflow-config workflow/dd_met5_test.json --stage all --runner slurm --dry-run"
 
 [dependencies]
 python = "3.11.*"

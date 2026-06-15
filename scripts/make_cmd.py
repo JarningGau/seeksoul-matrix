@@ -14,7 +14,7 @@ from _version import __version__
 import workflow_input_checks as wic
 
 STAGE_SEQUENCE = ["fastp_split", "demux_extract_bc"]
-STAGE_CHOICES = STAGE_SEQUENCE
+STAGE_CHOICES = [*STAGE_SEQUENCE, "all"]
 SLURM_NEST_STAGE_KEYS = frozenset(STAGE_SEQUENCE)
 STAGE_REQUIRED_FIELDS = {
     "fastp_split": ["r1", "r2", "number_of_split_parts"],
@@ -109,7 +109,8 @@ def parse_args() -> argparse.Namespace:
         action="store_true",
         help=(
             "Do not require prior-stage outputs under the sample work directory. "
-            "For fastp_split, still skips r1/r2 existence checks when set."
+            "For fastp_split, still skips r1/r2 existence checks when set. "
+            "When generating --stage all, this is passed to each per-stage subprocess automatically."
         ),
     )
     parser.add_argument("--slurm-partition")
@@ -349,6 +350,7 @@ def resolve_settings(args: argparse.Namespace) -> dict:
         "slurm_error": pick(args.slurm_error, stage_slurm_cfg.get("error")),
         "submit": args.submit,
         "dry_run": args.dry_run,
+        "_slurm_cfg_raw": slurm_cfg_raw,
     }
 
     settings["work_root"] = settings["work_root"] or "work"
@@ -384,7 +386,11 @@ def resolve_settings(args: argparse.Namespace) -> dict:
         / f"{stage}_%x_%j.err"
     )
 
-    validate_required_for_stage(stage, settings)
+    if stage == "all":
+        for stage_name in STAGE_SEQUENCE:
+            validate_required_for_stage(stage_name, settings)
+    else:
+        validate_required_for_stage(stage, settings)
     return settings
 
 
@@ -427,6 +433,189 @@ def submit_script(path: Path, runner: str) -> None:
         subprocess.run(["sbatch", str(path)], check=True)
 
 
+def parse_generated_paths(command_output: str) -> list[Path]:
+    generated: list[Path] = []
+    for line in command_output.splitlines():
+        prefix = "[make_cmd] generated="
+        if line.startswith(prefix):
+            generated.append(Path(line[len(prefix) :].strip()))
+    return generated
+
+
+def build_stage_passthrough_args(argv: list[str]) -> list[str]:
+    passthrough: list[str] = []
+    flags_without_value = {
+        "--submit",
+        "--dry-run",
+        "--skip-workdir-input-checks",
+    }
+    index = 0
+    while index < len(argv):
+        token = argv[index]
+        if token in {"--stage", "--runner"}:
+            index += 2
+            continue
+        if token.startswith("--stage=") or token.startswith("--runner="):
+            index += 1
+            continue
+        if token in {"--submit", "--dry-run", "--skip-workdir-input-checks"}:
+            index += 1
+            continue
+        if token in flags_without_value:
+            passthrough.append(token)
+            index += 1
+            continue
+        if token.startswith("--"):
+            passthrough.append(token)
+            if index + 1 < len(argv):
+                passthrough.append(argv[index + 1])
+            index += 2
+            continue
+        passthrough.append(token)
+        index += 1
+    return passthrough
+
+
+def driver_scripts_for_stage(
+    stage_name: str, scripts: list[Path], *, runner: str
+) -> list[Path]:
+    if stage_name != "demux_extract_bc":
+        return scripts
+    if runner == "local":
+        return [script for script in scripts if script.name == "02_demux_extract_bc.sh"]
+    return [script for script in scripts if script.suffix == ".sbatch"]
+
+
+def generate_local_driver_script(
+    stage_scripts: list[tuple[str, list[Path]]], output_path: Path
+) -> None:
+    lines = [
+        "#!/usr/bin/env bash",
+        "set -euo pipefail",
+        "",
+        'SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"',
+        "",
+    ]
+    for stage_name, scripts in stage_scripts:
+        runnable = driver_scripts_for_stage(stage_name, scripts, runner="local")
+        if not runnable:
+            continue
+        for script_path in runnable:
+            lines.append(f'bash "$SCRIPT_DIR/{script_path.name}"')
+    lines.append("")
+    write_text(output_path, "\n".join(lines))
+    output_path.chmod(0o755)
+
+
+def generate_slurm_driver_script(
+    stage_scripts: list[tuple[str, list[Path]]],
+    output_path: Path,
+    log_dir: Path,
+    settings: dict,
+) -> None:
+    lines = [
+        "submit_with_dep() {",
+        '  local script_path="$1"',
+        '  local dep_chain="$2"',
+        "  local out",
+        '  if [[ -n "$dep_chain" ]]; then',
+        '    out="$(sbatch --dependency=afterok:${dep_chain} "$script_path")"',
+        "  else",
+        '    out="$(sbatch "$script_path")"',
+        "  fi",
+        '  echo "$out" >&2',
+        '  echo "${out##* }"',
+        "}",
+        "",
+        "join_deps() {",
+        "  local joined=''",
+        '  for item in "$@"; do',
+        '    if [[ -z "$item" ]]; then',
+        "      continue",
+        "    fi",
+        '    if [[ -z "$joined" ]]; then',
+        '      joined="$item"',
+        "    else",
+        '      joined="${joined}:$item"',
+        "    fi",
+        "  done",
+        '  echo "$joined"',
+        "}",
+        "",
+        'SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"',
+        'prev_stage_deps=""',
+        "",
+    ]
+    for stage_name, scripts in stage_scripts:
+        runnable = driver_scripts_for_stage(stage_name, scripts, runner="slurm")
+        if not runnable:
+            continue
+        lines.append(f'echo "[run.sbatch] stage={stage_name}"')
+        if stage_name == "demux_extract_bc":
+            chunk_scripts = [
+                script
+                for script in runnable
+                if script.name.startswith("02_demux_extract_bc_")
+            ]
+            aggregate_scripts = [
+                script for script in runnable if script.name.startswith("02_aggregate_")
+            ]
+            chunk_job_vars: list[str] = []
+            for index, script_path in enumerate(chunk_scripts):
+                var_name = f"jid_demux_chunk_{index}"
+                lines.append(
+                    f'{var_name}="$(submit_with_dep "$SCRIPT_DIR/{script_path.name}" "$prev_stage_deps")"'
+                )
+                chunk_job_vars.append(var_name)
+            if chunk_job_vars:
+                deps_join = " ".join(f"${var_name}" for var_name in chunk_job_vars)
+                lines.append(f'chunk_deps="$(join_deps {deps_join})"')
+                for script_path in aggregate_scripts:
+                    lines.append(
+                        f'prev_stage_deps="$(submit_with_dep "$SCRIPT_DIR/{script_path.name}" "$chunk_deps")"'
+                    )
+            continue
+        job_vars: list[str] = []
+        for index, script_path in enumerate(runnable):
+            var_name = f"jid_{stage_name}_{index}".replace("-", "_")
+            lines.append(
+                f'{var_name}="$(submit_with_dep "$SCRIPT_DIR/{script_path.name}" "$prev_stage_deps")"'
+            )
+            job_vars.append(var_name)
+        deps_join = " ".join(f"${var_name}" for var_name in job_vars)
+        lines.append(f'prev_stage_deps="$(join_deps {deps_join})"')
+        lines.append("")
+    lines.append('echo "[run.sbatch] done final_dep=${prev_stage_deps}"')
+    driver_command = "\n".join(lines)
+    slurm_args = argparse.Namespace(
+        job_name=f"seeksoul_all_driver_{settings['sample_id']}",
+        slurm_partition=settings["slurm_partition"],
+        slurm_mem=settings["slurm_mem"],
+        slurm_cpus_per_task=settings["slurm_cpus_per_task"],
+        slurm_output=settings["slurm_output"].replace(
+            "%x", f"seeksoul_all_driver_{settings['sample_id']}"
+        ),
+        slurm_error=settings["slurm_error"].replace(
+            "%x", f"seeksoul_all_driver_{settings['sample_id']}"
+        ),
+    )
+    generate_slurm_script(driver_command, output_path, log_dir, slurm_args)
+
+
+def apply_stage_slurm_settings(settings: dict, stage: str) -> dict:
+    slurm_cfg_raw = settings.get("_slurm_cfg_raw", {})
+    stage_slurm_cfg = select_stage_slurm_cfg(slurm_cfg_raw, stage)
+    updated = dict(settings)
+    updated["slurm_partition"] = stage_slurm_cfg.get("partition") or settings["slurm_partition"]
+    updated["slurm_mem"] = stage_slurm_cfg.get("mem") or settings["slurm_mem"]
+    updated["slurm_cpus_per_task"] = (
+        stage_slurm_cfg.get("cpus_per_task") or settings["slurm_cpus_per_task"]
+    )
+    updated["slurm_output"] = stage_slurm_cfg.get("output") or settings["slurm_output"]
+    updated["slurm_error"] = stage_slurm_cfg.get("error") or settings["slurm_error"]
+    return updated
+
+
 def main() -> int:
     args = parse_args()
     settings = resolve_settings(args)
@@ -434,12 +623,78 @@ def main() -> int:
     command_dir = sample_work / "commands"
     log_dir = sample_work / "logs"
 
-    validate_inputs_for_stage(
-        settings["stage"],
-        settings,
-        sample_work,
-        skip_workdir_inputs=bool(args.skip_workdir_input_checks),
-    )
+    if settings["stage"] != "all":
+        validate_inputs_for_stage(
+            settings["stage"],
+            settings,
+            sample_work,
+            skip_workdir_inputs=bool(args.skip_workdir_input_checks),
+        )
+
+    if settings["stage"] == "all":
+        for stage_name in STAGE_SEQUENCE:
+            validate_inputs_for_stage(
+                stage_name,
+                settings,
+                sample_work,
+                skip_workdir_inputs=True,
+            )
+        passthrough_args = build_stage_passthrough_args(sys.argv[1:])
+        stage_scripts: list[tuple[str, list[Path]]] = []
+        for stage_name in STAGE_SEQUENCE:
+            stage_argv = [
+                sys.executable,
+                __file__,
+                *passthrough_args,
+                "--runner",
+                settings["runner"],
+                "--stage",
+                stage_name,
+            ]
+            if settings["dry_run"]:
+                stage_argv.append("--dry-run")
+            stage_argv.append("--skip-workdir-input-checks")
+            completed = subprocess.run(
+                stage_argv, check=False, capture_output=True, text=True
+            )
+            if completed.stdout:
+                print(completed.stdout, end="")
+            if completed.stderr:
+                print(completed.stderr, end="", file=sys.stderr)
+            if completed.returncode != 0:
+                return completed.returncode
+            stage_scripts.append((stage_name, parse_generated_paths(completed.stdout)))
+
+        driver_path: Path
+        if settings["runner"] == "local":
+            driver_path = command_dir / "run.sh"
+            print(f"[make_cmd] script={driver_path}")
+            if not settings["dry_run"]:
+                generate_local_driver_script(stage_scripts, driver_path)
+        else:
+            driver_path = command_dir / "run.sbatch"
+            print(f"[make_cmd] script={driver_path}")
+            if not settings["dry_run"]:
+                driver_settings = apply_stage_slurm_settings(
+                    settings, STAGE_SEQUENCE[-1]
+                )
+                generate_slurm_driver_script(
+                    stage_scripts, driver_path, log_dir, driver_settings
+                )
+
+        if not settings["dry_run"] and driver_path.exists():
+            print(f"[make_cmd] generated={driver_path}")
+        if settings["submit"] and not settings["dry_run"]:
+            if settings["runner"] == "slurm":
+                subprocess.run(["bash", str(driver_path)], check=True)
+                print("[make_cmd] submitted_driver=1")
+                print("[make_cmd] submit_mode=client_side_sbatch_dag")
+            else:
+                submit_script(driver_path, settings["runner"])
+                print("[make_cmd] submitted_driver=1")
+
+        print("[make_cmd] stage=all helper generation complete")
+        return 0
 
     generated_scripts: list[Path] = []
     if settings["stage"] == "fastp_split":
