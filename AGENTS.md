@@ -49,6 +49,42 @@ Follow the template's engineering patterns when implementing seeksoul-matrix:
 
 No seeksoul-matrix test suite yet. When adding tests, follow the template's regression style in `dbit-matrix/docs/maintenance/`. Before finishing workflow changes, run relevant CLI `--help`, `--version`, and `--dry-run`.
 
+## Lightweight Development Loop
+
+Minimal loop for pipeline work — not a heavyweight engineering process.
+
+### Before editing
+
+Briefly declare the task:
+
+- what will be changed
+- why the change is needed
+- which files are likely to be touched
+- how the result will be checked
+
+### During implementation
+
+- make the smallest change that solves the task
+- avoid unrelated refactoring
+- preserve existing input/output formats unless explicitly required
+- preserve existing command-line behavior when possible
+- keep code and documentation consistent with the current project structure
+
+### After editing
+
+1. Run the most relevant lightweight check available — e.g. script on a small input, one representative pipeline step, expected output files, existing tests, or generated reports/tables.
+2. Update `doc/dev/log.md` with a short entry:
+
+   - **date**
+   - **task name**
+   - **files changed**
+   - **summary of changes**
+   - **check performed**
+   - **status:** `done`, `needs_review`, or `blocked`
+   - **notes:** remaining risks, if any
+
+**Validation rule:** if no check was run, status must be `needs_review` (not `done`); record why.
+
 ## Commit & Pull Request Guidelines
 
 Use [Conventional Commits](https://www.conventionalcommits.org/): `type: short description` in imperative mood, lowercase, under 72 characters. Common types: `feat`, `fix`, `refactor`, `docs`, `chore`, `data`, `analysis`.
