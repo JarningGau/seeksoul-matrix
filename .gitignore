@@ -9,3 +9,5 @@ dbit-matrix/*
 SeekSoulMethyl/*
 
 __pycache__
+
+vendor/

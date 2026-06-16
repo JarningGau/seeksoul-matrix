@@ -9,23 +9,35 @@ environments:
     packages:
       linux-64:
       - conda: https://mirrors2.westlake.edu.cn/ANACONDA/cloud/conda-forge/linux-64/_openmp_mutex-4.5-20_gnu.conda
+      - conda: https://mirrors2.westlake.edu.cn/ANACONDA/cloud/bioconda/linux-64/bowtie2-2.5.5-ha27dd3b_0.conda
       - conda: https://mirrors2.westlake.edu.cn/ANACONDA/cloud/conda-forge/linux-64/bzip2-1.0.8-hda65f42_9.conda
+      - conda: https://mirrors2.westlake.edu.cn/ANACONDA/cloud/conda-forge/linux-64/c-ares-1.34.6-hb03c661_0.conda
       - conda: https://mirrors2.westlake.edu.cn/ANACONDA/cloud/conda-forge/noarch/ca-certificates-2026.5.20-hbd8a1cb_0.conda
       - conda: https://mirrors2.westlake.edu.cn/ANACONDA/cloud/conda-forge/linux-64/cffi-2.0.0-py311h03d9500_1.conda
       - conda: https://mirrors2.westlake.edu.cn/ANACONDA/cloud/bioconda/linux-64/cutadapt-5.0-py311haab0aaa_0.tar.bz2
       - conda: https://mirrors2.westlake.edu.cn/ANACONDA/cloud/bioconda/linux-64/dnaio-1.2.2-py311hdad781d_0.tar.bz2
       - conda: https://mirrors2.westlake.edu.cn/ANACONDA/cloud/bioconda/linux-64/fastp-0.24.3-heae3180_0.tar.bz2
+      - conda: https://mirrors2.westlake.edu.cn/ANACONDA/cloud/conda-forge/linux-64/git-2.54.0-pl5321h6d3cee1_0.conda
+      - conda: https://mirrors2.westlake.edu.cn/ANACONDA/cloud/bioconda/linux-64/htslib-1.23.1-h633afcb_0.conda
       - conda: https://mirrors2.westlake.edu.cn/ANACONDA/cloud/conda-forge/linux-64/isa-l-2.31.1-hb9d3cd8_1.conda
+      - conda: https://mirrors2.westlake.edu.cn/ANACONDA/cloud/conda-forge/linux-64/keyutils-1.6.3-hb9d3cd8_0.conda
+      - conda: https://mirrors2.westlake.edu.cn/ANACONDA/cloud/conda-forge/linux-64/krb5-1.22.2-ha1258a1_0.conda
       - conda: https://mirrors2.westlake.edu.cn/ANACONDA/cloud/conda-forge/linux-64/ld_impl_linux-64-2.45.1-default_hbd61a6d_102.conda
+      - conda: https://mirrors2.westlake.edu.cn/ANACONDA/cloud/conda-forge/linux-64/libcurl-8.20.0-hcf29cc6_0.conda
       - conda: https://mirrors2.westlake.edu.cn/ANACONDA/cloud/conda-forge/linux-64/libdeflate-1.25-h17f619e_0.conda
+      - conda: https://mirrors2.westlake.edu.cn/ANACONDA/cloud/conda-forge/linux-64/libedit-3.1.20250104-pl5321h7949ede_0.conda
+      - conda: https://mirrors2.westlake.edu.cn/ANACONDA/cloud/conda-forge/linux-64/libev-4.33-hd590300_2.conda
       - conda: https://mirrors2.westlake.edu.cn/ANACONDA/cloud/conda-forge/linux-64/libexpat-2.8.1-hecca717_0.conda
       - conda: https://mirrors2.westlake.edu.cn/ANACONDA/cloud/conda-forge/linux-64/libffi-3.5.2-h3435931_0.conda
       - conda: https://mirrors2.westlake.edu.cn/ANACONDA/cloud/conda-forge/linux-64/libgcc-15.2.0-he0feb66_19.conda
       - conda: https://mirrors2.westlake.edu.cn/ANACONDA/cloud/conda-forge/linux-64/libgcc-ng-15.2.0-h69a702a_19.conda
       - conda: https://mirrors2.westlake.edu.cn/ANACONDA/cloud/conda-forge/linux-64/libgomp-15.2.0-he0feb66_19.conda
+      - conda: https://mirrors2.westlake.edu.cn/ANACONDA/cloud/conda-forge/linux-64/libiconv-1.18-h3b78370_2.conda
       - conda: https://mirrors2.westlake.edu.cn/ANACONDA/cloud/conda-forge/linux-64/liblzma-5.8.3-hb03c661_0.conda
+      - conda: https://mirrors2.westlake.edu.cn/ANACONDA/cloud/conda-forge/linux-64/libnghttp2-1.68.1-h877daf1_0.conda
       - conda: https://mirrors2.westlake.edu.cn/ANACONDA/cloud/conda-forge/linux-64/libnsl-2.0.1-hb9d3cd8_1.conda
       - conda: https://mirrors2.westlake.edu.cn/ANACONDA/cloud/conda-forge/linux-64/libsqlite-3.53.1-h0c1763c_0.conda
+      - conda: https://mirrors2.westlake.edu.cn/ANACONDA/cloud/conda-forge/linux-64/libssh2-1.11.1-hcf80075_0.conda
       - conda: https://mirrors2.westlake.edu.cn/ANACONDA/cloud/conda-forge/linux-64/libstdcxx-15.2.0-h934c35e_19.conda
       - conda: https://mirrors2.westlake.edu.cn/ANACONDA/cloud/conda-forge/linux-64/libstdcxx-ng-15.2.0-hdf11a46_19.conda
       - conda: https://mirrors2.westlake.edu.cn/ANACONDA/cloud/conda-forge/linux-64/libuuid-2.42.1-h5347b49_0.conda
@@ -34,6 +46,8 @@ environments:
       - conda: https://mirrors2.westlake.edu.cn/ANACONDA/cloud/conda-forge/linux-64/ncurses-6.6-hdb14827_0.conda
       - conda: https://mirrors2.westlake.edu.cn/ANACONDA/cloud/conda-forge/linux-64/openssl-3.6.2-h35e630c_0.conda
       - conda: https://mirrors2.westlake.edu.cn/ANACONDA/cloud/conda-forge/linux-64/pbzip2-1.1.13-h1fcc475_2.conda
+      - conda: https://mirrors2.westlake.edu.cn/ANACONDA/cloud/conda-forge/linux-64/pcre2-10.47-haa7fec5_0.conda
+      - conda: https://mirrors2.westlake.edu.cn/ANACONDA/cloud/conda-forge/linux-64/perl-5.32.1-7_hd590300_perl5.conda
       - conda: https://mirrors2.westlake.edu.cn/ANACONDA/cloud/conda-forge/linux-64/pigz-2.8-h421ea60_2.conda
       - conda: https://mirrors2.westlake.edu.cn/ANACONDA/cloud/conda-forge/noarch/pycparser-3.0-pyhcf101f3_0.conda
       - conda: https://mirrors2.westlake.edu.cn/ANACONDA/cloud/conda-forge/linux-64/python-3.11.15-hd63d673_0_cpython.conda
@@ -41,6 +55,7 @@ environments:
       - conda: https://mirrors2.westlake.edu.cn/ANACONDA/cloud/conda-forge/linux-64/python-zlib-ng-1.0.0-py311h15805fc_1.conda
       - conda: https://mirrors2.westlake.edu.cn/ANACONDA/cloud/conda-forge/noarch/python_abi-3.11-8_cp311.conda
       - conda: https://mirrors2.westlake.edu.cn/ANACONDA/cloud/conda-forge/linux-64/readline-8.3-h853b02a_0.conda
+      - conda: https://mirrors2.westlake.edu.cn/ANACONDA/cloud/bioconda/linux-64/samtools-1.23.1-ha83d96e_0.conda
       - conda: https://mirrors2.westlake.edu.cn/ANACONDA/cloud/conda-forge/linux-64/tk-8.6.13-noxft_h366c992_103.conda
       - conda: https://mirrors2.westlake.edu.cn/ANACONDA/cloud/conda-forge/noarch/tzdata-2025c-hc9c84f9_1.conda
       - conda: https://mirrors2.westlake.edu.cn/ANACONDA/cloud/conda-forge/noarch/xopen-2.0.2-pyh707e725_2.conda
@@ -61,6 +76,22 @@ packages:
   license_family: BSD
   size: 28948
   timestamp: 1770939786096
+- conda: https://mirrors2.westlake.edu.cn/ANACONDA/cloud/bioconda/linux-64/bowtie2-2.5.5-ha27dd3b_0.conda
+  sha256: 64c666e17228b41c1d4a7ab0ad505b58f50e2ff2e08f22cb2bbbd289090296e4
+  md5: af24eb11ce11479ee06d7dc499da0a28
+  depends:
+  - _openmp_mutex >=4.5
+  - libgcc >=14
+  - libgomp
+  - libstdcxx >=14
+  - libzlib >=1.3.1,<2.0a0
+  - perl
+  - python
+  - zstd >=1.5.7,<1.6.0a0
+  license: GPL-3.0-or-later
+  license_family: GPL3
+  size: 11604543
+  timestamp: 1771303108096
 - conda: https://mirrors2.westlake.edu.cn/ANACONDA/cloud/conda-forge/linux-64/bzip2-1.0.8-hda65f42_9.conda
   sha256: 0b75d45f0bba3e95dc693336fa51f40ea28c980131fec438afb7ce6118ed05f6
   md5: d2ffd7602c02f2b316fd921d39876885
@@ -71,6 +102,16 @@ packages:
   license_family: BSD
   size: 260182
   timestamp: 1771350215188
+- conda: https://mirrors2.westlake.edu.cn/ANACONDA/cloud/conda-forge/linux-64/c-ares-1.34.6-hb03c661_0.conda
+  sha256: cc9accf72fa028d31c2a038460787751127317dcfa991f8d1f1babf216bb454e
+  md5: 920bb03579f15389b9e512095ad995b7
+  depends:
+  - __glibc >=2.17,<3.0.a0
+  - libgcc >=14
+  license: MIT
+  license_family: MIT
+  size: 207882
+  timestamp: 1765214722852
 - conda: https://mirrors2.westlake.edu.cn/ANACONDA/cloud/conda-forge/noarch/ca-certificates-2026.5.20-hbd8a1cb_0.conda
   sha256: 9812a303a1395e1dafbd92e5bc8a1ff6013bcbba0a09c7f03a8d23e43560aa9b
   md5: 489b8e97e666c93f68fdb35c3c9b957f
@@ -129,6 +170,37 @@ packages:
   license_family: MIT
   size: 264829
   timestamp: 1748474439473
+- conda: https://mirrors2.westlake.edu.cn/ANACONDA/cloud/conda-forge/linux-64/git-2.54.0-pl5321h6d3cee1_0.conda
+  sha256: 718eb36fe23cac36c7bbeeb21ea0078256c8790b0e949a4ebb322e8e1da6c405
+  md5: 25396e7aade67a4d4413431559a47591
+  depends:
+  - __glibc >=2.28,<3.0.a0
+  - libcurl >=8.20.0,<9.0a0
+  - libexpat >=2.8.0,<3.0a0
+  - libgcc >=14
+  - libiconv >=1.18,<2.0a0
+  - libzlib >=1.3.2,<2.0a0
+  - openssl >=3.5.6,<4.0a0
+  - pcre2 >=10.47,<10.48.0a0
+  - perl 5.*
+  license: GPL-2.0-or-later and LGPL-2.1-or-later
+  size: 11369381
+  timestamp: 1778072346246
+- conda: https://mirrors2.westlake.edu.cn/ANACONDA/cloud/bioconda/linux-64/htslib-1.23.1-h633afcb_0.conda
+  sha256: d0977efb1885c9f00ca76ee13e7c0f9a8936bf271eec25ffa78606cd816a13c9
+  md5: 209caa9e4ff0b9ed02dd09c3161917e5
+  depends:
+  - bzip2 >=1.0.8,<2.0a0
+  - libcurl >=8.19.0,<9.0a0
+  - libdeflate >=1.25,<1.26.0a0
+  - libgcc >=14
+  - liblzma >=5.8.2,<6.0a0
+  - libzlib >=1.3.1,<2.0a0
+  - openssl >=3.5.5,<4.0a0
+  license: MIT
+  license_family: MIT
+  size: 1195461
+  timestamp: 1773854995668
 - conda: https://mirrors2.westlake.edu.cn/ANACONDA/cloud/conda-forge/linux-64/isa-l-2.31.1-hb9d3cd8_1.conda
   sha256: 75b15f01a6b286630c4a98be0d05e286275a5ef3868e23e6d9644e51b73650e1
   md5: 00f364ec0a7e975ec9d2fc720b19c129
@@ -139,6 +211,30 @@ packages:
   license_family: BSD
   size: 157291
   timestamp: 1736497194571
+- conda: https://mirrors2.westlake.edu.cn/ANACONDA/cloud/conda-forge/linux-64/keyutils-1.6.3-hb9d3cd8_0.conda
+  sha256: 0960d06048a7185d3542d850986d807c6e37ca2e644342dd0c72feefcf26c2a4
+  md5: b38117a3c920364aff79f870c984b4a3
+  depends:
+  - __glibc >=2.17,<3.0.a0
+  - libgcc >=13
+  license: LGPL-2.1-or-later
+  size: 134088
+  timestamp: 1754905959823
+- conda: https://mirrors2.westlake.edu.cn/ANACONDA/cloud/conda-forge/linux-64/krb5-1.22.2-ha1258a1_0.conda
+  sha256: 3e307628ca3527448dd1cb14ad7bb9d04d1d28c7d4c5f97ba196ae984571dd25
+  md5: fb53fb07ce46a575c5d004bbc96032c2
+  depends:
+  - __glibc >=2.17,<3.0.a0
+  - keyutils >=1.6.3,<2.0a0
+  - libedit >=3.1.20250104,<3.2.0a0
+  - libedit >=3.1.20250104,<4.0a0
+  - libgcc >=14
+  - libstdcxx >=14
+  - openssl >=3.5.5,<4.0a0
+  license: MIT
+  license_family: MIT
+  size: 1386730
+  timestamp: 1769769569681
 - conda: https://mirrors2.westlake.edu.cn/ANACONDA/cloud/conda-forge/linux-64/ld_impl_linux-64-2.45.1-default_hbd61a6d_102.conda
   sha256: 3d584956604909ff5df353767f3a2a2f60e07d070b328d109f30ac40cd62df6c
   md5: 18335a698559cdbcd86150a48bf54ba6
@@ -151,6 +247,22 @@ packages:
   license_family: GPL
   size: 728002
   timestamp: 1774197446916
+- conda: https://mirrors2.westlake.edu.cn/ANACONDA/cloud/conda-forge/linux-64/libcurl-8.20.0-hcf29cc6_0.conda
+  sha256: 75963a5dd913311f59a35dbd307592f4fa754c4808aff9c33edb430c415e38eb
+  md5: c3cc2864f82a944bc90a7beb4d3b0e88
+  depends:
+  - __glibc >=2.17,<3.0.a0
+  - krb5 >=1.22.2,<1.23.0a0
+  - libgcc >=14
+  - libnghttp2 >=1.68.1,<2.0a0
+  - libssh2 >=1.11.1,<2.0a0
+  - libzlib >=1.3.2,<2.0a0
+  - openssl >=3.5.6,<4.0a0
+  - zstd >=1.5.7,<1.6.0a0
+  license: curl
+  license_family: MIT
+  size: 468706
+  timestamp: 1777461492876
 - conda: https://mirrors2.westlake.edu.cn/ANACONDA/cloud/conda-forge/linux-64/libdeflate-1.25-h17f619e_0.conda
   sha256: aa8e8c4be9a2e81610ddf574e05b64ee131fab5e0e3693210c9d6d2fba32c680
   md5: 6c77a605a7a689d17d4819c0f8ac9a00
@@ -161,6 +273,27 @@ packages:
   license_family: MIT
   size: 73490
   timestamp: 1761979956660
+- conda: https://mirrors2.westlake.edu.cn/ANACONDA/cloud/conda-forge/linux-64/libedit-3.1.20250104-pl5321h7949ede_0.conda
+  sha256: d789471216e7aba3c184cd054ed61ce3f6dac6f87a50ec69291b9297f8c18724
+  md5: c277e0a4d549b03ac1e9d6cbbe3d017b
+  depends:
+  - ncurses
+  - __glibc >=2.17,<3.0.a0
+  - libgcc >=13
+  - ncurses >=6.5,<7.0a0
+  license: BSD-2-Clause
+  license_family: BSD
+  size: 134676
+  timestamp: 1738479519902
+- conda: https://mirrors2.westlake.edu.cn/ANACONDA/cloud/conda-forge/linux-64/libev-4.33-hd590300_2.conda
+  sha256: 1cd6048169fa0395af74ed5d8f1716e22c19a81a8a36f934c110ca3ad4dd27b4
+  md5: 172bf1cd1ff8629f2b1179945ed45055
+  depends:
+  - libgcc-ng >=12
+  license: BSD-2-Clause
+  license_family: BSD
+  size: 112766
+  timestamp: 1702146165126
 - conda: https://mirrors2.westlake.edu.cn/ANACONDA/cloud/conda-forge/linux-64/libexpat-2.8.1-hecca717_0.conda
   sha256: 363018b25fdb5534c79783d912bd4b685a3547f4fc5996357ad548899b0ee8e7
   md5: 93764a5ca80616e9c10106cdaec92f74
@@ -214,6 +347,15 @@ packages:
   license_family: GPL
   size: 603817
   timestamp: 1778268942614
+- conda: https://mirrors2.westlake.edu.cn/ANACONDA/cloud/conda-forge/linux-64/libiconv-1.18-h3b78370_2.conda
+  sha256: c467851a7312765447155e071752d7bf9bf44d610a5687e32706f480aad2833f
+  md5: 915f5995e94f60e9a4826e0b0920ee88
+  depends:
+  - __glibc >=2.17,<3.0.a0
+  - libgcc >=14
+  license: LGPL-2.1-only
+  size: 790176
+  timestamp: 1754908768807
 - conda: https://mirrors2.westlake.edu.cn/ANACONDA/cloud/conda-forge/linux-64/liblzma-5.8.3-hb03c661_0.conda
   sha256: ec30e52a3c1bf7d0425380a189d209a52baa03f22fb66dd3eb587acaa765bd6d
   md5: b88d90cad08e6bc8ad540cb310a761fb
@@ -225,6 +367,22 @@ packages:
   license: 0BSD
   size: 113478
   timestamp: 1775825492909
+- conda: https://mirrors2.westlake.edu.cn/ANACONDA/cloud/conda-forge/linux-64/libnghttp2-1.68.1-h877daf1_0.conda
+  sha256: 663444d77a42f2265f54fb8b48c5450bfff4388d9c0f8253dd7855f0d993153f
+  md5: 2a45e7f8af083626f009645a6481f12d
+  depends:
+  - __glibc >=2.17,<3.0.a0
+  - c-ares >=1.34.6,<2.0a0
+  - libev >=4.33,<4.34.0a0
+  - libev >=4.33,<5.0a0
+  - libgcc >=14
+  - libstdcxx >=14
+  - libzlib >=1.3.1,<2.0a0
+  - openssl >=3.5.5,<4.0a0
+  license: MIT
+  license_family: MIT
+  size: 663344
+  timestamp: 1773854035739
 - conda: https://mirrors2.westlake.edu.cn/ANACONDA/cloud/conda-forge/linux-64/libnsl-2.0.1-hb9d3cd8_1.conda
   sha256: 927fe72b054277cde6cb82597d0fcf6baf127dcbce2e0a9d8925a68f1265eef5
   md5: d864d34357c3b65a4b731f78c0801dc4
@@ -245,6 +403,18 @@ packages:
   license: blessing
   size: 954962
   timestamp: 1777986471789
+- conda: https://mirrors2.westlake.edu.cn/ANACONDA/cloud/conda-forge/linux-64/libssh2-1.11.1-hcf80075_0.conda
+  sha256: fa39bfd69228a13e553bd24601332b7cfeb30ca11a3ca50bb028108fe90a7661
+  md5: eecce068c7e4eddeb169591baac20ac4
+  depends:
+  - __glibc >=2.17,<3.0.a0
+  - libgcc >=13
+  - libzlib >=1.3.1,<2.0a0
+  - openssl >=3.5.0,<4.0a0
+  license: BSD-3-Clause
+  license_family: BSD
+  size: 304790
+  timestamp: 1745608545575
 - conda: https://mirrors2.westlake.edu.cn/ANACONDA/cloud/conda-forge/linux-64/libstdcxx-15.2.0-h934c35e_19.conda
   sha256: dff1058c76ec6b8759e41cefa2508162d00e4a5e6721aa68ec3fd10094e702dc
   md5: 5794b3bdc38177caf969dabd3af08549
@@ -325,6 +495,28 @@ packages:
   license: pbzip2
   size: 42312
   timestamp: 1696006783405
+- conda: https://mirrors2.westlake.edu.cn/ANACONDA/cloud/conda-forge/linux-64/pcre2-10.47-haa7fec5_0.conda
+  sha256: 5e6f7d161356fefd981948bea5139c5aa0436767751a6930cb1ca801ebb113ff
+  md5: 7a3bff861a6583f1889021facefc08b1
+  depends:
+  - __glibc >=2.17,<3.0.a0
+  - bzip2 >=1.0.8,<2.0a0
+  - libgcc >=14
+  - libzlib >=1.3.1,<2.0a0
+  license: BSD-3-Clause
+  license_family: BSD
+  size: 1222481
+  timestamp: 1763655398280
+- conda: https://mirrors2.westlake.edu.cn/ANACONDA/cloud/conda-forge/linux-64/perl-5.32.1-7_hd590300_perl5.conda
+  build_number: 7
+  sha256: 9ec32b6936b0e37bcb0ed34f22ec3116e75b3c0964f9f50ecea5f58734ed6ce9
+  md5: f2cfec9406850991f4e3d960cc9e3321
+  depends:
+  - libgcc-ng >=12
+  - libxcrypt >=4.4.36
+  license: GPL-1.0-or-later OR Artistic-1.0-Perl
+  size: 13344463
+  timestamp: 1703310653947
 - conda: https://mirrors2.westlake.edu.cn/ANACONDA/cloud/conda-forge/linux-64/pigz-2.8-h421ea60_2.conda
   sha256: 3d535f86f6eb4243cc47c51a3694e01bfc1aa72d80d9789c053f0154b531f974
   md5: 3d71c0550440051500a14e13f691580d
@@ -418,6 +610,17 @@ packages:
   license_family: GPL
   size: 345073
   timestamp: 1765813471974
+- conda: https://mirrors2.westlake.edu.cn/ANACONDA/cloud/bioconda/linux-64/samtools-1.23.1-ha83d96e_0.conda
+  sha256: 2cb721907a2df7c54580298d655ae7587dbed593bd5536fa8ef4a22c9ae2a496
+  md5: 89624fbd17c069abcbc8b19b96d497a0
+  depends:
+  - htslib >=1.23.1,<1.24.0a0
+  - libgcc >=14
+  - libzlib >=1.3.1,<2.0a0
+  - ncurses >=6.5,<7.0a0
+  license: MIT
+  size: 489995
+  timestamp: 1773861794171
 - conda: https://mirrors2.westlake.edu.cn/ANACONDA/cloud/conda-forge/linux-64/tk-8.6.13-noxft_h366c992_103.conda
   sha256: cafeec44494f842ffeca27e9c8b0c27ed714f93ac77ddadc6aaf726b5554ebac
   md5: cffd3bdd58090148f4cfcd831f4b26ab

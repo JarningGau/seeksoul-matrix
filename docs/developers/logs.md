@@ -1,5 +1,28 @@
 # Development log
 
+## 2026-06-16 — seekgene Bismark environment setup
+
+**Task:** Add bowtie2/samtools/perl/git to pixi; install seekgene/Bismark fork with `--add_barcode` / `--add_umi`.
+
+**Files changed:**
+- `pixi.toml`, `pixi.lock`
+- `scripts/install_seekgene_bismark.sh`, `scripts/check_bismark_env.sh`
+- `.gitignore`
+
+**Summary:**
+- Added bioconda deps: `bowtie2`, `samtools`, `perl`, `git`.
+- `pixi run setup-bismark` clones [seekgene/Bismark](https://github.com/seekgene/Bismark) at pinned commit `363ea7a` into `$CONDA_PREFIX/bin` (same pattern as SeekSoulMethyl).
+- `pixi run check-bismark-env` verifies `bismark`, `bowtie2`, `samtools` on PATH and seekgene-only flags.
+
+**Checks performed:**
+- `pixi install`
+- `pixi run setup-bismark`
+- `pixi run check-bismark-env`
+
+**Status:** done
+
+**Notes:** Re-run `pixi run setup-bismark` after `pixi install` recreates `.pixi/envs/default` (Bismark scripts are not a conda package). Mouse Bismark index: `/mnt/wd-4t/resource/mouse-reference-GRCm39/fasta/` (`--genome` parent of `Bisulfite_Genome/`).
+
 ## 2026-06-15 — end-to-end workflow driver (`--stage all`)
 
 **Task:** Consolidate `fastp_split` + `demux_extract_bc` with `run.sh` / `run.sbatch` generation; validate local e2e run and Slurm script generation.
