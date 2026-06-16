@@ -13,12 +13,13 @@ from pathlib import Path
 from _version import __version__
 import workflow_input_checks as wic
 
-STAGE_SEQUENCE = ["fastp_split", "demux_extract_bc"]
+STAGE_SEQUENCE = ["fastp_split", "demux_extract_bc", "bismark_align"]
 STAGE_CHOICES = [*STAGE_SEQUENCE, "all"]
 SLURM_NEST_STAGE_KEYS = frozenset(STAGE_SEQUENCE)
 STAGE_REQUIRED_FIELDS = {
     "fastp_split": ["r1", "r2", "number_of_split_parts"],
     "demux_extract_bc": ["barcode_whitelist"],
+    "bismark_align": ["bismark_ref"],
 }
 DEFAULT_BARCODE_WHITELIST = "whitelist/DD-MET5/U3CB_methylation.txt.gz"
 
@@ -93,6 +94,27 @@ def parse_args() -> argparse.Namespace:
         "--gzip-level",
         type=int,
         help="gzip level for demux output FASTQ. Default: 6.",
+    )
+    parser.add_argument(
+        "--bismark-ref",
+        help="Bismark --genome path (parent of Bisulfite_Genome/).",
+    )
+    parser.add_argument(
+        "--bismark-parallel",
+        type=int,
+        help="Bismark --parallel value. Default: 8.",
+    )
+    parser.add_argument(
+        "--bismark-max-insert",
+        type=int,
+        help="Bismark -X max insert size. Default: 1000.",
+    )
+    parser.add_argument(
+        "--bismark-bin",
+        help=(
+            "bismark executable path or command name. "
+            "Default: bismark from current Python env if available, else bismark."
+        ),
     )
     parser.add_argument(
         "--submit",
@@ -176,6 +198,67 @@ def build_aggregate_ct_command(demux_dir: Path) -> str:
             str(demux_dir),
         ]
     )
+
+
+def build_bismark_align_work_command(args: argparse.Namespace, sample_work: Path) -> str:
+    return quoted(
+        [
+            sys.executable,
+            "scripts/bismark_align.py",
+            "--work-path",
+            str(sample_work),
+            "--bismark-ref",
+            args.bismark_ref,
+            "--bismark-parallel",
+            str(args.bismark_parallel),
+            "--bismark-max-insert",
+            str(args.bismark_max_insert),
+            "--bismark-bin",
+            args.bismark_bin,
+        ]
+    )
+
+
+def build_bismark_align_chunk_command(
+    args: argparse.Namespace,
+    sample_work: Path,
+    chunk_id: str,
+    fwd_r1: Path,
+    fwd_r2: Path,
+    rev_r1: Path,
+    rev_r2: Path,
+) -> str:
+    align_dir = sample_work / "align"
+    return quoted(
+        [
+            sys.executable,
+            "scripts/bismark_align.py",
+            "--chunk-id",
+            chunk_id,
+            "--forward-r1",
+            str(fwd_r1),
+            "--forward-r2",
+            str(fwd_r2),
+            "--reverse-r1",
+            str(rev_r1),
+            "--reverse-r2",
+            str(rev_r2),
+            "--output-dir",
+            str(align_dir),
+            "--bismark-ref",
+            args.bismark_ref,
+            "--bismark-parallel",
+            str(args.bismark_parallel),
+            "--bismark-max-insert",
+            str(args.bismark_max_insert),
+            "--bismark-bin",
+            args.bismark_bin,
+        ]
+    )
+
+
+def discover_bismark_align_chunks(sample_work: Path) -> list[tuple[str, Path, Path, Path, Path]]:
+    return wic.discover_demux_align_chunks(sample_work / "demux")
 
 
 def build_demux_local_batch_command(
@@ -292,6 +375,18 @@ def validate_inputs_for_stage(
             for _chunk_id, r1_path, r2_path in shards:
                 wic.require_file(f"shard_fastq/{r1_path.name}", r1_path)
                 wic.require_file(f"shard_fastq/{r2_path.name}", r2_path)
+    elif stage == "bismark_align":
+        wic.require_bismark_ref(wic.resolve_config_path(settings["bismark_ref"]))
+        wic.require_optional_executable_path("bismark_bin", settings["bismark_bin"])
+        demux_dir = sample_work / "demux"
+        chunks = wic.discover_demux_align_chunks(demux_dir)
+        if not chunks:
+            raise ValueError(f"no demux align inputs found under {demux_dir}")
+        for _chunk_id, fwd_r1, fwd_r2, rev_r1, rev_r2 in chunks:
+            wic.require_file(f"demux/{fwd_r1.name}", fwd_r1)
+            wic.require_file(f"demux/{fwd_r2.name}", fwd_r2)
+            wic.require_file(f"demux/{rev_r1.name}", rev_r1)
+            wic.require_file(f"demux/{rev_r2.name}", rev_r2)
     else:
         raise ValueError(f"unsupported stage for input validation: {stage}")
 
@@ -341,6 +436,12 @@ def resolve_settings(args: argparse.Namespace) -> dict:
             args.barcode_hamming_distance, cfg.get("barcode_hamming_distance")
         ),
         "gzip_level": pick(args.gzip_level, cfg.get("gzip_level")),
+        "bismark_ref": pick(args.bismark_ref, cfg.get("bismark_ref")),
+        "bismark_parallel": pick(args.bismark_parallel, cfg.get("bismark_parallel")),
+        "bismark_max_insert": pick(
+            args.bismark_max_insert, cfg.get("bismark_max_insert")
+        ),
+        "bismark_bin": pick(args.bismark_bin, cfg.get("bismark_bin")),
         "slurm_partition": pick(args.slurm_partition, stage_slurm_cfg.get("partition")),
         "slurm_mem": pick(args.slurm_mem, stage_slurm_cfg.get("mem")),
         "slurm_cpus_per_task": pick(
@@ -370,6 +471,12 @@ def resolve_settings(args: argparse.Namespace) -> dict:
             settings["barcode_hamming_distance"] or 1
         )
         settings["gzip_level"] = int(settings["gzip_level"] or 6)
+    if stage == "bismark_align" or stage == "all":
+        settings["bismark_parallel"] = int(settings["bismark_parallel"] or 8)
+        settings["bismark_max_insert"] = int(settings["bismark_max_insert"] or 1000)
+        settings["bismark_bin"] = normalize_executable_setting(
+            settings["bismark_bin"], "bismark"
+        )
     settings["slurm_partition"] = settings["slurm_partition"] or "cpu"
     settings["slurm_mem"] = settings["slurm_mem"] or "16G"
     settings["slurm_cpus_per_task"] = settings["slurm_cpus_per_task"] or 8
@@ -479,11 +586,20 @@ def build_stage_passthrough_args(argv: list[str]) -> list[str]:
 def driver_scripts_for_stage(
     stage_name: str, scripts: list[Path], *, runner: str
 ) -> list[Path]:
-    if stage_name != "demux_extract_bc":
-        return scripts
-    if runner == "local":
-        return [script for script in scripts if script.name == "02_demux_extract_bc.sh"]
-    return [script for script in scripts if script.suffix == ".sbatch"]
+    if stage_name == "demux_extract_bc":
+        if runner == "local":
+            return [script for script in scripts if script.name == "02_demux_extract_bc.sh"]
+        return [script for script in scripts if script.suffix == ".sbatch"]
+    if stage_name == "bismark_align":
+        if runner == "local":
+            return [script for script in scripts if script.name == "03_bismark_align.sh"]
+        return [
+            script
+            for script in scripts
+            if script.name.startswith("03_bismark_align_")
+            and script.suffix == ".sbatch"
+        ]
+    return scripts
 
 
 def generate_local_driver_script(
@@ -822,6 +938,64 @@ def main() -> int:
                 generated_scripts.append(submit_script_path)
             else:
                 generated_scripts.append(aggregate_script)
+    elif settings["stage"] == "bismark_align":
+        command_args = argparse.Namespace(
+            bismark_ref=settings["bismark_ref"],
+            bismark_parallel=settings["bismark_parallel"],
+            bismark_max_insert=settings["bismark_max_insert"],
+            bismark_bin=settings["bismark_bin"],
+        )
+        if settings["runner"] == "local":
+            script_path = command_dir / "03_bismark_align.sh"
+            command = build_bismark_align_work_command(command_args, sample_work)
+            print(f"[make_cmd] runner={settings['runner']}")
+            print(f"[make_cmd] stage={settings['stage']}")
+            print(f"[make_cmd] sample_id={settings['sample_id']}")
+            print(f"[make_cmd] script={script_path}")
+            print(f"[make_cmd] command={command}")
+            if settings["dry_run"]:
+                return 0
+            generate_local_script(command, script_path)
+            generated_scripts.append(script_path)
+        else:
+            chunks = discover_bismark_align_chunks(sample_work)
+            if not chunks:
+                raise ValueError("no demux align inputs found for bismark script generation")
+            print(f"[make_cmd] runner={settings['runner']}")
+            print(f"[make_cmd] stage={settings['stage']}")
+            print(f"[make_cmd] sample_id={settings['sample_id']}")
+            print(f"[make_cmd] chunk_count={len(chunks)}")
+            for chunk_id, fwd_r1, fwd_r2, rev_r1, rev_r2 in chunks:
+                base_name = f"03_bismark_align_{chunk_id}"
+                script_path = command_dir / f"{base_name}.sbatch"
+                command = build_bismark_align_chunk_command(
+                    command_args,
+                    sample_work,
+                    chunk_id,
+                    fwd_r1,
+                    fwd_r2,
+                    rev_r1,
+                    rev_r2,
+                )
+                chunk_output = settings["slurm_output"].replace(
+                    "%x", f"seeksoul_bismark_{settings['sample_id']}_{chunk_id}"
+                )
+                chunk_error = settings["slurm_error"].replace(
+                    "%x", f"seeksoul_bismark_{settings['sample_id']}_{chunk_id}"
+                )
+                print(f"[make_cmd] script={script_path}")
+                print(f"[make_cmd] command={command}")
+                if not settings["dry_run"]:
+                    slurm_args = argparse.Namespace(
+                        job_name=f"seeksoul_bismark_{settings['sample_id']}_{chunk_id}",
+                        slurm_partition=settings["slurm_partition"],
+                        slurm_mem=settings["slurm_mem"],
+                        slurm_cpus_per_task=settings["slurm_cpus_per_task"],
+                        slurm_output=chunk_output,
+                        slurm_error=chunk_error,
+                    )
+                    generate_slurm_script(command, script_path, log_dir, slurm_args)
+                generated_scripts.append(script_path)
     else:
         raise ValueError(f"unsupported stage: {settings['stage']}")
 

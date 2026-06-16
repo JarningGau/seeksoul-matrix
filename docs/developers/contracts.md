@@ -4,9 +4,9 @@ Normative input/output contracts for seeksoul-matrix workflow stages.
 
 ## Main stage order (planned)
 
-`fastp_split -> demux_extract_bc -> ...`
+`fastp_split -> demux_extract_bc -> bismark_align -> ...`
 
-`fastp_split` and `demux_extract_bc` are implemented in this repository revision.
+`fastp_split`, `demux_extract_bc`, and `bismark_align` are implemented in this repository revision.
 
 ### `fastp_split`
 
@@ -91,3 +91,31 @@ funnel.total
 Accounting: `funnel.total = barcode_rejected + barcode_ambiguous + barcode_passed.total`; `barcode_passed.total = unknown_chain + too_short + valid.total` (when `unknown_chain` reads leave before length filter).
 
 `CtoT` is rounded to 3 decimal places; fractions use 6 decimal places.
+
+### `bismark_align`
+
+Purpose: Bismark bisulfite alignment of demux forward/reverse paired FASTQ using the seekgene [Bismark](https://github.com/seekgene/Bismark) fork (`--add_barcode`, `--add_umi`).
+
+Inputs:
+
+- `work/<sample>/demux/<chunk>.forward_1.fq.gz` / `.forward_2.fq.gz`
+- `work/<sample>/demux/<chunk>.reverse_1.fq.gz` / `.reverse_2.fq.gz`
+- `bismark_ref`: parent directory of `Bisulfite_Genome/` (passed to `bismark --genome`)
+
+Per-chunk outputs under `work/<sample>/align/`:
+
+| File | Description |
+|------|-------------|
+| `<chunk>.forward_1_bismark_bt2_pe.bam` | forward-strand Bismark paired-end BAM |
+| `<chunk>.forward_1_bismark_bt2_PE_report.txt` | forward alignment report |
+| `<chunk>.reverse_1_bismark_bt2_pe.bam` | reverse-strand BAM (`--pbat`) |
+| `<chunk>.reverse_1_bismark_bt2_PE_report.txt` | reverse alignment report |
+
+Contract:
+
+- Uses seekgene Bismark (stock bioconda Bismark lacks `--add_barcode` / `--add_umi`).
+- Forward: `bismark --genome <bismark_ref> --parallel <N> -1 <fwd_r1> -2 <fwd_r2> -o <align_dir> -X <max_insert> --add_barcode --add_umi`.
+- Reverse: same with `--pbat`.
+- Default `bismark_parallel=8`, `bismark_max_insert=1000` (aligned with SeekSoulMethyl `step2.nf`).
+- BAM read names retain demux format; Bismark writes `CB` and `UR` tags from read names.
+- `samtools sort`, UMI dedup, and per-cell BAM splitting are out of scope for this stage.

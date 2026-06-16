@@ -88,3 +88,35 @@ def plan_fastp_shards(shard_dir: Path, number_of_split_parts: int) -> list[tuple
             r2_name = f"R2_{index:03d}.fq.gz"
         shards.append((chunk_id, shard_dir / r1_name, shard_dir / r2_name))
     return shards
+
+
+def discover_demux_align_chunks(
+    demux_dir: Path,
+) -> list[tuple[str, Path, Path, Path, Path]]:
+    """Return sorted (chunk_id, fwd_r1, fwd_r2, rev_r1, rev_r2) from demux outputs."""
+    demux_dir = Path(demux_dir)
+    if not demux_dir.is_dir():
+        return []
+
+    chunks: list[tuple[str, Path, Path, Path, Path]] = []
+    for fwd_r1 in sorted(demux_dir.glob("*.forward_1.fq.gz")):
+        chunk_id = fwd_r1.name[: -len(".forward_1.fq.gz")]
+        fwd_r2 = demux_dir / f"{chunk_id}.forward_2.fq.gz"
+        rev_r1 = demux_dir / f"{chunk_id}.reverse_1.fq.gz"
+        rev_r2 = demux_dir / f"{chunk_id}.reverse_2.fq.gz"
+        chunks.append((chunk_id, fwd_r1, fwd_r2, rev_r1, rev_r2))
+    return chunks
+
+
+def require_bismark_ref(path: Path) -> None:
+    ref = Path(path)
+    if not ref.is_dir():
+        raise ValueError(f"missing bismark_ref directory: {ref}")
+    bisulfite = ref / "Bisulfite_Genome"
+    for subdir in ("CT_conversion", "GA_conversion"):
+        candidate = bisulfite / subdir
+        if not candidate.is_dir():
+            raise ValueError(
+                f"invalid bismark_ref (missing {candidate}); "
+                "pass the parent of Bisulfite_Genome/"
+            )

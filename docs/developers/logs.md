@@ -1,5 +1,33 @@
 # Development log
 
+## 2026-06-16 — bismark_align stage
+
+**Task:** Implement `bismark_align` stage (seekgene Bismark forward/reverse per demux chunk); wire into `make_cmd.py` and `--stage all`.
+
+**Files changed:**
+- `scripts/bismark_align.py`, `scripts/make_cmd.py`, `scripts/workflow_input_checks.py`
+- `workflow/dd_met5_test.json`, `pixi.toml`
+- `docs/developers/contracts.md`
+
+**Summary:**
+- Added per-chunk Bismark alignment: forward (`--add_barcode --add_umi`) and reverse (`--pbat`) into `work/<sample>/align/`.
+- Extended `make_cmd.py` with `03_bismark_align` local batch and per-chunk Slurm sbatch; `STAGE_SEQUENCE` now includes `bismark_align`.
+- Workflow JSON: `bismark_ref`, `bismark_parallel`, `bismark_max_insert`, `bismark_bin`; `pixi run bismark-align-dry-run` helper.
+
+**Checks performed:**
+- `pixi run check-bismark-env`
+- `pixi run bismark-align-dry-run`
+- `pixi run python scripts/bismark_align.py --help`
+- `pixi run python scripts/make_cmd.py --workflow-config workflow/dd_met5_test.json --stage bismark_align` (generated `03_bismark_align.sh`)
+- `pixi run e2e-dry-run`
+- Real run: chunk `0001` on `work/dd-met5-example/demux/` (~2 min, `--bismark-parallel 4`)
+  - outputs: `0001.forward_1_bismark_bt2_pe.bam`, `0001.reverse_1_bismark_bt2_pe.bam` + PE reports
+  - `samtools view` confirms `CB:Z:` and `UR:Z:` tags in BAM
+
+**Status:** done
+
+**Notes:** Sort/dedup/split BAM not in scope. Re-run `pixi run setup-bismark` after pixi env rebuild. Slurm `03_bismark_align_<chunk>.sbatch` generation follows demux pattern; cluster submit not tested.
+
 ## 2026-06-16 — seekgene Bismark environment setup
 
 **Task:** Add bowtie2/samtools/perl/git to pixi; install seekgene/Bismark fork with `--add_barcode` / `--add_umi`.
