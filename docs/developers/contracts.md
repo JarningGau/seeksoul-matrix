@@ -62,7 +62,8 @@ Contract:
 - C→T QC uses ME5 positions and 17L+ME validation aligned with SeekSoulMethyl `calculate_ct_conversion_rate`.
 - Only reads with **TTT** insert signature (forward chain) contribute to `linker.tsv` and CtoT statistics; reverse (`CCC`) reads are excluded from conversion QC.
 - Each `(CR, UB)` pair contributes at most one row to `linker.tsv`.
-- Spike-in output, multi-barcode rescue, and CH chimeric filtering are out of scope.
+- **CH chimeric filtering** (`--filter-ch`, default `2`, workflow key `filter_ch`): after adapter trim and length check, drop read pairs where trimmed R1 or R2 exceeds the threshold for strand-specific CH patterns (SeekSoulMethyl `should_filter_read_ch_pattern`). `0` disables filtering. Does not affect `linker.tsv` / C→T QC (computed on raw R1 before trim).
+- Spike-in output and multi-barcode rescue are out of scope.
 
 **`<chunk>.stats.json` schema:**
 
@@ -77,6 +78,9 @@ funnel.total
    ├─ funnel.barcode_passed.corrected
    ├─ funnel.barcode_passed.unknown_chain
    ├─ funnel.barcode_passed.too_short
+   ├─ funnel.barcode_passed.chimeric_filtered.total
+   │  ├─ funnel.barcode_passed.chimeric_filtered.forward
+   │  └─ funnel.barcode_passed.chimeric_filtered.reverse
    └─ funnel.barcode_passed.valid.total
       ├─ funnel.barcode_passed.valid.forward
       └─ funnel.barcode_passed.valid.reverse
@@ -84,11 +88,11 @@ funnel.total
 
 | Section | Fields | Description |
 |---------|--------|-------------|
-| (root) | `chunk_id`, `chemistry`, `input_r1`, `input_r2` | metadata |
+| (root) | `chunk_id`, `chemistry`, `filter_ch`, `input_r1`, `input_r2` | metadata |
 | `funnel` | nested object above | demux read retention funnel (all counts are reads) |
 | `ct` | `num_17lme`, `rate_17lme`, `ct_reads`, `ct_umi_dedup`, `ct_convertible_bases`, `ct_converted_bases`, `CtoT` | C→T QC funnel (parallel to FASTQ output; TTT-insert only; fields in processing order) |
 
-Accounting: `funnel.total = barcode_rejected + barcode_ambiguous + barcode_passed.total`; `barcode_passed.total = unknown_chain + too_short + valid.total` (when `unknown_chain` reads leave before length filter).
+Accounting: `funnel.total = barcode_rejected + barcode_ambiguous + barcode_passed.total`; `barcode_passed.total = unknown_chain + too_short + chimeric_filtered.total + valid.total` (when `unknown_chain` reads leave before length filter).
 
 `CtoT` is rounded to 3 decimal places; fractions use 6 decimal places.
 

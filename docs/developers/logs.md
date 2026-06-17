@@ -1,5 +1,26 @@
 # Development log
 
+## 2026-06-17 — demux filter_ch (CH chimeric filtering)
+
+**Task:** Add SeekSoulMethyl-aligned `filter_ch` to `demux_extract_bc` (default 2).
+
+**Files changed:**
+- `scripts/demux_extract_bc.py`, `scripts/make_cmd.py`, `workflow/dd_met5_test.json`, `docs/developers/contracts.md`
+
+**Summary:**
+- Ported `should_filter_read_ch_pattern()` and strand-specific CH regexes; filter runs post-adapter-trim, pre-FASTQ output.
+- CLI `--filter-ch` (default 2); workflow key `filter_ch`; `stats.json` records `filter_ch` and `funnel.barcode_passed.chimeric_filtered`.
+- `make_cmd` passes `--filter-ch` in local/Slurm demux commands; default applies for `demux_extract_bc` and `--stage all`.
+
+**Checks performed:**
+- `pixi run python scripts/demux_extract_bc.py --help` (`--filter-ch` present)
+- `pixi run demux-dry-run` (generated command includes `--filter-ch 2`)
+- Chunk `0001` on `work/dd-met5-example/shard_fastq/`: `filter_ch=2` → `valid=224161`, `chimeric_filtered=115154` (fwd 45315, rev 69839); `filter_ch=0` → `valid=339315` (matches pre-change); `CtoT=0.997` unchanged
+
+**Status:** done
+
+**Notes:** `linker.tsv` / C→T QC unaffected (raw R1, pre-trim). Validation outputs under `work/dd-met5-example/demux_validate/`. Bismark on `fc2_0001` → `align_fc2/`: pooled CpG 77.3%, CHG 1.62%, CHH 1.91%, mapped 88.0%, confident 79.5% (vs pre-filter CHG 7.3%/CHH 8.1%/mapped 77.4%; SeekSoulMethyl ref ~77/1.6/1.9/89.9/81.3%).
+
 ## 2026-06-17 — demux_extract_bc tqdm progress bar
 
 **Task:** Add read-pair progress bar to `demux_extract_bc` using tqdm; total from `fastp.json`.

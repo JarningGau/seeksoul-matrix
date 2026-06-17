@@ -96,6 +96,13 @@ def parse_args() -> argparse.Namespace:
         help="gzip level for demux output FASTQ. Default: 6.",
     )
     parser.add_argument(
+        "--filter-ch",
+        type=int,
+        help=(
+            "CH chimeric filter threshold for demux (0=disabled). Default: 2."
+        ),
+    )
+    parser.add_argument(
         "--bismark-ref",
         help="Bismark --genome path (parent of Bisulfite_Genome/).",
     )
@@ -186,6 +193,8 @@ def build_demux_chunk_command(
             str(args.barcode_hamming_distance),
             "--gzip-level",
             str(args.gzip_level),
+            "--filter-ch",
+            str(args.filter_ch),
             "--fastp-json",
             str(fastp_json),
         ]
@@ -314,6 +323,7 @@ def build_demux_local_batch_command(args: argparse.Namespace, sample_work: Path)
         '--output-prefix "$demux_dir/$chunk" '
         f"--barcode-hamming-distance {int(args.barcode_hamming_distance)} "
         f"--gzip-level {int(args.gzip_level)} "
+        f"--filter-ch {int(args.filter_ch)} "
         '--fastp-json "$fastp_json"\n'
         "done\n"
         "\n"
@@ -458,6 +468,7 @@ def resolve_settings(args: argparse.Namespace) -> dict:
             args.barcode_hamming_distance, cfg.get("barcode_hamming_distance")
         ),
         "gzip_level": pick(args.gzip_level, cfg.get("gzip_level")),
+        "filter_ch": pick(args.filter_ch, cfg.get("filter_ch")),
         "bismark_ref": pick(args.bismark_ref, cfg.get("bismark_ref")),
         "bismark_parallel": pick(args.bismark_parallel, cfg.get("bismark_parallel")),
         "bismark_max_insert": pick(
@@ -485,7 +496,7 @@ def resolve_settings(args: argparse.Namespace) -> dict:
     settings["fastp_bin"] = normalize_executable_setting(
         settings["fastp_bin"], "fastp"
     )
-    if stage == "demux_extract_bc":
+    if stage in ("demux_extract_bc", "all"):
         settings["barcode_whitelist"] = (
             settings["barcode_whitelist"] or DEFAULT_BARCODE_WHITELIST
         )
@@ -493,6 +504,7 @@ def resolve_settings(args: argparse.Namespace) -> dict:
             settings["barcode_hamming_distance"] or 1
         )
         settings["gzip_level"] = int(settings["gzip_level"] or 6)
+        settings["filter_ch"] = int(settings["filter_ch"] if settings["filter_ch"] is not None else 2)
     if stage == "bismark_align" or stage == "all":
         settings["bismark_parallel"] = int(settings["bismark_parallel"] or 8)
         settings["bismark_max_insert"] = int(settings["bismark_max_insert"] or 1000)
@@ -877,6 +889,7 @@ def main() -> int:
             barcode_whitelist=settings["barcode_whitelist"],
             barcode_hamming_distance=settings["barcode_hamming_distance"],
             gzip_level=settings["gzip_level"],
+            filter_ch=settings["filter_ch"],
         )
         demux_dir = sample_work / "demux"
         if settings["runner"] == "local":

@@ -37,6 +37,12 @@ DD_MET5_ADAPTER2 = [
     ["CTRTCTCTTATACACATCT", "3", 0.1, 9],
 ]
 
+# CH chimeric filtering (SeekSoulMethyl filter_ch)
+R1_FORWARD_CH_PATTERN = re.compile(r"C[ATC]")
+R2_FORWARD_CH_PATTERN = re.compile(r"[ATG]G")
+R1_REVERSE_CH_PATTERN = re.compile(r"[ATG]G")
+R2_REVERSE_CH_PATTERN = re.compile(r"C[ATC]")
+
 
 @dataclass
 class FastqRead:
@@ -238,6 +244,26 @@ def determine_chain_direction(sequence: str) -> str:
     return "forward"
 
 
+def should_filter_read_ch_pattern(
+    r1_sequence: str,
+    r2_sequence: str,
+    chain_direction: str,
+    threshold: int,
+) -> bool:
+    """Return True when read pair exceeds filter_ch CH pattern count (SeekSoulMethyl)."""
+    if threshold <= 0:
+        return False
+    if chain_direction == "forward":
+        r1_count = len(R1_FORWARD_CH_PATTERN.findall(r1_sequence))
+        r2_count = len(R2_FORWARD_CH_PATTERN.findall(r2_sequence))
+    elif chain_direction == "reverse":
+        r1_count = len(R1_REVERSE_CH_PATTERN.findall(r1_sequence))
+        r2_count = len(R2_REVERSE_CH_PATTERN.findall(r2_sequence))
+    else:
+        return False
+    return r1_count > threshold or r2_count > threshold
+
+
 def fastq_iter(handle: TextIO) -> Iterator[tuple[str, str, str, str]]:
     while True:
         head = handle.readline()
@@ -285,6 +311,7 @@ def build_stats_payload(
     stats: dict[str, int],
     ct_c_total: int,
     ct_t_total: int,
+    filter_ch: int,
 ) -> dict:
     total = stats["total"]
     valid = stats["valid"]
@@ -294,9 +321,11 @@ def build_stats_payload(
     ct_convertible = ct_c_total + ct_t_total
     ctot = round_ctot(ct_c_total, ct_t_total)
 
+    chimeric = stats["chimeric_filtered"]
     return {
         "chunk_id": chunk_id,
         "chemistry": "DD-MET5",
+        "filter_ch": filter_ch,
         "input_r1": input_r1,
         "input_r2": input_r2,
         "funnel": {
@@ -310,6 +339,11 @@ def build_stats_payload(
                 "corrected_fraction": safe_fraction(b_corrected, b_whitelist),
                 "unknown_chain": stats["unknown_chain"],
                 "too_short": stats["too_short"],
+                "chimeric_filtered": {
+                    "total": chimeric,
+                    "forward": stats["forward_chimeric"],
+                    "reverse": stats["reverse_chimeric"],
+                },
                 "valid": {
                     "total": valid,
                     "fraction_of_input": safe_fraction(valid, total),
@@ -444,6 +478,15 @@ def parse_args() -> argparse.Namespace:
         help="Override expected read-pair count for the progress bar.",
     )
     parser.add_argument(
+        "--filter-ch",
+        type=int,
+        default=2,
+        help=(
+            "CH chimeric filter threshold (0=disabled; >0 drops pairs when R1 or R2 "
+            "CH pattern count exceeds this value). Default: 2."
+        ),
+    )
+    parser.add_argument(
         "--dry-run",
         action="store_true",
         help="Print output paths without reading FASTQ.",
@@ -457,6 +500,7 @@ def main() -> int:
 
     print(f"[demux_extract_bc] input_r1={args.r1}")
     print(f"[demux_extract_bc] input_r2={args.r2}")
+    print(f"[demux_extract_bc] filter_ch={args.filter_ch}")
     for label, path in paths.items():
         print(f"[demux_extract_bc] output_{label}={path}")
 
@@ -563,6 +607,16 @@ def main() -> int:
                 stats["too_short"] += 1
                 continue
 
+            if should_filter_read_ch_pattern(
+                r1.sequence, r2.sequence, chain, args.filter_ch
+            ):
+                stats["chimeric_filtered"] += 1
+                if chain == "forward":
+                    stats["forward_chimeric"] += 1
+                else:
+                    stats["reverse_chimeric"] += 1
+                continue
+
             stats["valid"] += 1
             if chain == "forward":
                 stats["forward"] += 1
@@ -583,6 +637,7 @@ def main() -> int:
         stats=stats,
         ct_c_total=ct_c_total,
         ct_t_total=ct_t_total,
+        filter_ch=args.filter_ch,
     )
     paths["stats"].write_text(
         json.dumps(stats_payload, indent=2) + "\n", encoding="utf-8"
@@ -594,6 +649,9 @@ def main() -> int:
         f"forward={stats['forward']} reverse={stats['reverse']} "
         f"B_corrected={stats['B_corrected']} B_rejected={stats['B_rejected']} "
         f"B_ambiguous={stats['B_ambiguous']} too_short={stats['too_short']} "
+        f"chimeric_filtered={stats['chimeric_filtered']} "
+        f"forward_chimeric={stats['forward_chimeric']} "
+        f"reverse_chimeric={stats['reverse_chimeric']} "
         f"ct_umi_dedup={stats['ct_umi_dedup']} "
         f"CtoT={stats_payload['ct']['CtoT']:.3f} "
         f"speed={stats['total'] / elapsed:.1f} reads/s"
