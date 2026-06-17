@@ -73,21 +73,24 @@ def discover_fastp_shards(shard_dir: Path) -> list[tuple[str, Path, Path]]:
     return sorted(shards, key=lambda item: item[0])
 
 
-def plan_fastp_shards(shard_dir: Path, number_of_split_parts: int) -> list[tuple[str, Path, Path]]:
-    """Return expected shard paths when fastp outputs are not present yet."""
+def build_chunk_names(number_of_split_parts: int) -> list[str]:
     if number_of_split_parts <= 0:
         raise ValueError("number_of_split_parts must be > 0")
+    width = max(4, len(str(number_of_split_parts)))
+    return [f"{index:0{width}d}" for index in range(1, number_of_split_parts + 1)]
+
+
+def plan_fastp_shards(shard_dir: Path, number_of_split_parts: int) -> list[tuple[str, Path, Path]]:
+    """Return expected shard paths when fastp outputs are not present yet."""
     shard_dir = Path(shard_dir)
-    shards: list[tuple[str, Path, Path]] = []
-    for index in range(number_of_split_parts):
-        chunk_id = f"{index + 1:04d}"
-        if index == 0:
-            r1_name, r2_name = "R1.fq.gz", "R2.fq.gz"
-        else:
-            r1_name = f"R1_{index:03d}.fq.gz"
-            r2_name = f"R2_{index:03d}.fq.gz"
-        shards.append((chunk_id, shard_dir / r1_name, shard_dir / r2_name))
-    return shards
+    return [
+        (
+            chunk_id,
+            shard_dir / f"{chunk_id}.R1.fq.gz",
+            shard_dir / f"{chunk_id}.R2.fq.gz",
+        )
+        for chunk_id in build_chunk_names(number_of_split_parts)
+    ]
 
 
 def discover_demux_align_chunks(

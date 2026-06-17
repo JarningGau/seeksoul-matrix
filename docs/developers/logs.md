@@ -1,5 +1,24 @@
 # Development log
 
+## 2026-06-17 — demux shard discovery fix (dbit-matrix pattern)
+
+**Task:** Fix `FileNotFoundError` when `--stage all --submit` runs demux before fastp shard paths are known at script-generation time.
+
+**Files changed:**
+- `scripts/make_cmd.py`, `scripts/workflow_input_checks.py`
+
+**Summary:**
+- Local demux batch script now globs `shard_fastq/*.R1.fq.gz` at runtime (mirrors `dbit-matrix/scripts/make_cmd.py`).
+- Slurm demux uses config-based `{chunk}.R1.fq.gz` paths via fixed `plan_fastp_shards` (fastp 0.24.3 `--split` output naming).
+- Removed stale `R1.fq.gz` / `R1_001.fq.gz` fallback in `plan_fastp_shards`.
+
+**Checks performed:**
+- `pixi run demux-dry-run`
+- `pixi run e2e-dry-run`
+- `pixi run e2e-slurm-dry-run` (Slurm sbatch shows `0001.R1.fq.gz` paths)
+
+**Status:** done
+
 ## 2026-06-16 — bismark_align stage
 
 **Task:** Implement `bismark_align` stage (seekgene Bismark forward/reverse per demux chunk); wire into `make_cmd.py` and `--stage all`.

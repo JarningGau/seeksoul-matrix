@@ -261,29 +261,59 @@ def discover_bismark_align_chunks(sample_work: Path) -> list[tuple[str, Path, Pa
     return wic.discover_demux_align_chunks(sample_work / "demux")
 
 
-def build_demux_local_batch_command(
-    args: argparse.Namespace, sample_work: Path, number_of_split_parts: int | None = None
-) -> str:
+def build_demux_chunks_from_config(
+    sample_work: Path, number_of_split_parts: int
+) -> list[tuple[str, Path, Path, Path]]:
+    shard_dir = sample_work / "shard_fastq"
     demux_dir = sample_work / "demux"
-    aggregate_cmd = build_aggregate_ct_command(demux_dir)
-    lines = [
-        f"demux_dir={shlex.quote(str(demux_dir))}",
-        'mkdir -p "$demux_dir"',
-        "",
+    return [
+        (chunk_id, r1_path, r2_path, demux_dir / chunk_id)
+        for chunk_id, r1_path, r2_path in wic.plan_fastp_shards(
+            shard_dir, number_of_split_parts
+        )
     ]
-    chunks = discover_demux_chunks(sample_work, number_of_split_parts)
-    total = len(chunks)
-    for idx, (chunk_id, r1_path, r2_path, out_prefix) in enumerate(chunks, start=1):
-        percent = idx * 100 // total if total else 100
-        lines.append(
-            f"echo '[demux] {percent:3d}% ({idx}/{total}) {chunk_id}'"
-        )
-        lines.append(
-            build_demux_chunk_command(args, r1_path, r2_path, out_prefix)
-        )
-        lines.append("")
-    lines.extend([aggregate_cmd, "", 'echo "[demux] done"'])
-    return "\n".join(lines)
+
+
+def build_demux_local_batch_command(args: argparse.Namespace, sample_work: Path) -> str:
+    chunk_dir = sample_work / "shard_fastq"
+    demux_dir = sample_work / "demux"
+    chunk_dir_q = shlex.quote(str(chunk_dir))
+    demux_dir_q = shlex.quote(str(demux_dir))
+    py = quoted([sys.executable, "scripts/demux_extract_bc.py"])
+    aggregate_cmd = build_aggregate_ct_command(demux_dir)
+    return (
+        f"chunk_dir={chunk_dir_q}\n"
+        f"demux_dir={demux_dir_q}\n"
+        "\n"
+        "mkdir -p \"$demux_dir\"\n"
+        "shopt -s nullglob\n"
+        "r1_files=(\"$chunk_dir\"/*.R1.fq.gz)\n"
+        "total=${#r1_files[@]}\n"
+        "if [ \"$total\" -eq 0 ]; then\n"
+        '  echo "[demux] no chunk found under shard_fastq"\n'
+        "  exit 1\n"
+        "fi\n"
+        "\n"
+        "idx=0\n"
+        "for r1 in \"${r1_files[@]}\"; do\n"
+        "  idx=$((idx + 1))\n"
+        "  percent=$((idx * 100 / total))\n"
+        '  chunk="$(basename "$r1" .R1.fq.gz)"\n'
+        "  r2=\"$chunk_dir/${chunk}.R2.fq.gz\"\n"
+        "  printf '[demux] %3d%% (%d/%d) %s\\n' \"$percent\" \"$idx\" \"$total\" \"$chunk\"\n"
+        '  [ -f "$r2" ] || { echo "[demux] missing pair for $r1: $r2"; exit 1; }\n'
+        f"  {py} "
+        '"$r1" "$r2" '
+        f"--barcode-whitelist {shlex.quote(args.barcode_whitelist)} "
+        '--output-prefix "$demux_dir/$chunk" '
+        f"--barcode-hamming-distance {int(args.barcode_hamming_distance)} "
+        f"--gzip-level {int(args.gzip_level)}\n"
+        "done\n"
+        "\n"
+        f"{aggregate_cmd}\n"
+        "\n"
+        'echo "[demux] done"'
+    )
 
 
 def build_demux_slurm_submit_command(sample_work: Path) -> str:
@@ -307,21 +337,6 @@ def build_demux_slurm_submit_command(sample_work: Path) -> str:
         'echo "[demux] submitted aggregate job with dependency afterok${job_ids}"',
     ]
     return "\n".join(lines)
-
-
-def discover_demux_chunks(
-    sample_work: Path, number_of_split_parts: int | None = None
-) -> list[tuple[str, Path, Path, Path]]:
-    shard_dir = sample_work / "shard_fastq"
-    demux_dir = sample_work / "demux"
-    shards = wic.discover_fastp_shards(shard_dir)
-    if not shards and number_of_split_parts:
-        shards = wic.plan_fastp_shards(shard_dir, number_of_split_parts)
-    chunks: list[tuple[str, Path, Path, Path]] = []
-    for chunk_id, r1_path, r2_path in shards:
-        out_prefix = demux_dir / chunk_id
-        chunks.append((chunk_id, r1_path, r2_path, out_prefix))
-    return chunks
 
 
 def write_text(path: Path, content: str) -> None:
@@ -859,9 +874,7 @@ def main() -> int:
         demux_dir = sample_work / "demux"
         if settings["runner"] == "local":
             script_path = command_dir / "02_demux_extract_bc.sh"
-            command = build_demux_local_batch_command(
-                command_args, sample_work, settings.get("number_of_split_parts")
-            )
+            command = build_demux_local_batch_command(command_args, sample_work)
             print(f"[make_cmd] runner={settings['runner']}")
             print(f"[make_cmd] stage={settings['stage']}")
             print(f"[make_cmd] sample_id={settings['sample_id']}")
@@ -872,11 +885,13 @@ def main() -> int:
             generate_local_script(command, script_path)
             generated_scripts.append(script_path)
         else:
-            chunks = discover_demux_chunks(
-                sample_work, settings.get("number_of_split_parts")
+            if settings.get("number_of_split_parts") is None:
+                raise ValueError(
+                    "number_of_split_parts is required for slurm demux script generation"
+                )
+            chunks = build_demux_chunks_from_config(
+                sample_work, settings["number_of_split_parts"]
             )
-            if not chunks:
-                raise ValueError("no fastp shards found for demux script generation")
             print(f"[make_cmd] runner={settings['runner']}")
             print(f"[make_cmd] stage={settings['stage']}")
             print(f"[make_cmd] sample_id={settings['sample_id']}")
