@@ -16,6 +16,8 @@
     "bismark_parallel": 8,
     "bismark_max_insert": 1000,
     "bismark_bin": "bismark",
+    "sort_threads": 6,
+    "samtools_bin": "samtools",
     "slurm": {
         "fastp_split": {
             "partition": "amd-ep2",
@@ -30,6 +32,11 @@
         "bismark_align": {
             "partition": "amd-ep2",
             "mem": "32G",
+            "cpus_per_task": 8
+        },
+        "bam_sort": {
+            "partition": "amd-ep2",
+            "mem": "16G",
             "cpus_per_task": 8
         }
     }

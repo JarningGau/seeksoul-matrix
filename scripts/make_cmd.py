@@ -13,13 +13,14 @@ from pathlib import Path
 from _version import __version__
 import workflow_input_checks as wic
 
-STAGE_SEQUENCE = ["fastp_split", "demux_extract_bc", "bismark_align"]
+STAGE_SEQUENCE = ["fastp_split", "demux_extract_bc", "bismark_align", "bam_sort"]
 STAGE_CHOICES = [*STAGE_SEQUENCE, "all"]
 SLURM_NEST_STAGE_KEYS = frozenset(STAGE_SEQUENCE)
 STAGE_REQUIRED_FIELDS = {
     "fastp_split": ["r1", "r2", "number_of_split_parts"],
     "demux_extract_bc": ["barcode_whitelist"],
     "bismark_align": ["bismark_ref"],
+    "bam_sort": [],
 }
 DEFAULT_BARCODE_WHITELIST = "whitelist/DD-MET5/U3CB_methylation.txt.gz"
 
@@ -121,6 +122,18 @@ def parse_args() -> argparse.Namespace:
         help=(
             "bismark executable path or command name. "
             "Default: bismark from current Python env if available, else bismark."
+        ),
+    )
+    parser.add_argument(
+        "--sort-threads",
+        type=int,
+        help="Thread count for samtools sort -@ in bam_sort. Default: 6.",
+    )
+    parser.add_argument(
+        "--samtools-bin",
+        help=(
+            "samtools executable path or command name. "
+            "Default: samtools from current Python env if available, else samtools."
         ),
     )
     parser.add_argument(
@@ -273,6 +286,53 @@ def discover_bismark_align_chunks(sample_work: Path) -> list[tuple[str, Path, Pa
     return wic.discover_demux_align_chunks(sample_work / "demux")
 
 
+def discover_bam_sort_chunks(sample_work: Path) -> list[tuple[str, Path, Path]]:
+    return wic.discover_bismark_pe_bams(sample_work / "align")
+
+
+def build_bam_sort_work_command(args: argparse.Namespace, sample_work: Path) -> str:
+    return quoted(
+        [
+            sys.executable,
+            "scripts/bam_sort.py",
+            "--work-path",
+            str(sample_work),
+            "--sort-threads",
+            str(args.sort_threads),
+            "--samtools-bin",
+            args.samtools_bin,
+        ]
+    )
+
+
+def build_bam_sort_chunk_command(
+    args: argparse.Namespace,
+    sample_work: Path,
+    chunk_id: str,
+    forward_bam: Path,
+    reverse_bam: Path,
+) -> str:
+    align_dir = sample_work / "align"
+    return quoted(
+        [
+            sys.executable,
+            "scripts/bam_sort.py",
+            "--chunk-id",
+            chunk_id,
+            "--forward-bam",
+            str(forward_bam),
+            "--reverse-bam",
+            str(reverse_bam),
+            "--output-dir",
+            str(align_dir),
+            "--sort-threads",
+            str(args.sort_threads),
+            "--samtools-bin",
+            args.samtools_bin,
+        ]
+    )
+
+
 def build_demux_chunks_from_config(
     sample_work: Path, number_of_split_parts: int
 ) -> list[tuple[str, Path, Path, Path]]:
@@ -419,6 +479,15 @@ def validate_inputs_for_stage(
             wic.require_file(f"demux/{fwd_r2.name}", fwd_r2)
             wic.require_file(f"demux/{rev_r1.name}", rev_r1)
             wic.require_file(f"demux/{rev_r2.name}", rev_r2)
+    elif stage == "bam_sort":
+        wic.require_optional_executable_path("samtools_bin", settings["samtools_bin"])
+        align_dir = sample_work / "align"
+        chunks = wic.discover_bismark_pe_bams(align_dir)
+        if not chunks:
+            raise ValueError(f"no Bismark PE BAMs found under {align_dir}")
+        for _chunk_id, fwd_bam, rev_bam in chunks:
+            wic.require_file(f"align/{fwd_bam.name}", fwd_bam)
+            wic.require_file(f"align/{rev_bam.name}", rev_bam)
     else:
         raise ValueError(f"unsupported stage for input validation: {stage}")
 
@@ -475,6 +544,8 @@ def resolve_settings(args: argparse.Namespace) -> dict:
             args.bismark_max_insert, cfg.get("bismark_max_insert")
         ),
         "bismark_bin": pick(args.bismark_bin, cfg.get("bismark_bin")),
+        "sort_threads": pick(args.sort_threads, cfg.get("sort_threads")),
+        "samtools_bin": pick(args.samtools_bin, cfg.get("samtools_bin")),
         "slurm_partition": pick(args.slurm_partition, stage_slurm_cfg.get("partition")),
         "slurm_mem": pick(args.slurm_mem, stage_slurm_cfg.get("mem")),
         "slurm_cpus_per_task": pick(
@@ -510,6 +581,11 @@ def resolve_settings(args: argparse.Namespace) -> dict:
         settings["bismark_max_insert"] = int(settings["bismark_max_insert"] or 1000)
         settings["bismark_bin"] = normalize_executable_setting(
             settings["bismark_bin"], "bismark"
+        )
+    if stage == "bam_sort" or stage == "all":
+        settings["sort_threads"] = int(settings["sort_threads"] or 6)
+        settings["samtools_bin"] = normalize_executable_setting(
+            settings["samtools_bin"], "samtools"
         )
     settings["slurm_partition"] = settings["slurm_partition"] or "cpu"
     settings["slurm_mem"] = settings["slurm_mem"] or "16G"
@@ -631,6 +707,15 @@ def driver_scripts_for_stage(
             script
             for script in scripts
             if script.name.startswith("03_bismark_align_")
+            and script.suffix == ".sbatch"
+        ]
+    if stage_name == "bam_sort":
+        if runner == "local":
+            return [script for script in scripts if script.name == "04_bam_sort.sh"]
+        return [
+            script
+            for script in scripts
+            if script.name.startswith("04_bam_sort_")
             and script.suffix == ".sbatch"
         ]
     return scripts
@@ -1023,6 +1108,60 @@ def main() -> int:
                 if not settings["dry_run"]:
                     slurm_args = argparse.Namespace(
                         job_name=f"seeksoul_bismark_{settings['sample_id']}_{chunk_id}",
+                        slurm_partition=settings["slurm_partition"],
+                        slurm_mem=settings["slurm_mem"],
+                        slurm_cpus_per_task=settings["slurm_cpus_per_task"],
+                        slurm_output=chunk_output,
+                        slurm_error=chunk_error,
+                    )
+                    generate_slurm_script(command, script_path, log_dir, slurm_args)
+                generated_scripts.append(script_path)
+    elif settings["stage"] == "bam_sort":
+        command_args = argparse.Namespace(
+            sort_threads=settings["sort_threads"],
+            samtools_bin=settings["samtools_bin"],
+        )
+        if settings["runner"] == "local":
+            script_path = command_dir / "04_bam_sort.sh"
+            command = build_bam_sort_work_command(command_args, sample_work)
+            print(f"[make_cmd] runner={settings['runner']}")
+            print(f"[make_cmd] stage={settings['stage']}")
+            print(f"[make_cmd] sample_id={settings['sample_id']}")
+            print(f"[make_cmd] script={script_path}")
+            print(f"[make_cmd] command={command}")
+            if settings["dry_run"]:
+                return 0
+            generate_local_script(command, script_path)
+            generated_scripts.append(script_path)
+        else:
+            chunks = discover_bam_sort_chunks(sample_work)
+            if not chunks:
+                raise ValueError("no Bismark PE BAMs found for bam_sort script generation")
+            print(f"[make_cmd] runner={settings['runner']}")
+            print(f"[make_cmd] stage={settings['stage']}")
+            print(f"[make_cmd] sample_id={settings['sample_id']}")
+            print(f"[make_cmd] chunk_count={len(chunks)}")
+            for chunk_id, forward_bam, reverse_bam in chunks:
+                base_name = f"04_bam_sort_{chunk_id}"
+                script_path = command_dir / f"{base_name}.sbatch"
+                command = build_bam_sort_chunk_command(
+                    command_args,
+                    sample_work,
+                    chunk_id,
+                    forward_bam,
+                    reverse_bam,
+                )
+                chunk_output = settings["slurm_output"].replace(
+                    "%x", f"seeksoul_bamsort_{settings['sample_id']}_{chunk_id}"
+                )
+                chunk_error = settings["slurm_error"].replace(
+                    "%x", f"seeksoul_bamsort_{settings['sample_id']}_{chunk_id}"
+                )
+                print(f"[make_cmd] script={script_path}")
+                print(f"[make_cmd] command={command}")
+                if not settings["dry_run"]:
+                    slurm_args = argparse.Namespace(
+                        job_name=f"seeksoul_bamsort_{settings['sample_id']}_{chunk_id}",
                         slurm_partition=settings["slurm_partition"],
                         slurm_mem=settings["slurm_mem"],
                         slurm_cpus_per_task=settings["slurm_cpus_per_task"],

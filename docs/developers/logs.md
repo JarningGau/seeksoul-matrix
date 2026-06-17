@@ -1,5 +1,30 @@
 # Development log
 
+## 2026-06-17 — bam_sort stage
+
+**Task:** Implement `bam_sort` stage (samtools name-sort of Bismark PE BAMs); wire into `make_cmd.py` and `--stage all`.
+
+**Files changed:**
+- `scripts/bam_sort.py`, `scripts/make_cmd.py`, `scripts/workflow_input_checks.py`
+- `workflow/dd_met5_test.json`, `pixi.toml`
+- `docs/developers/contracts.md`, `AGENTS.md`
+
+**Summary:**
+- Added per-chunk name-sort: `samtools sort -n` on forward/reverse BAMs in `align/` → `*_sortbyname.bam`.
+- `discover_bismark_pe_bams()` pairs `<chunk>.forward_1_bismark_bt2_pe.bam` / `.reverse_1_bismark_bt2_pe.bam`.
+- `make_cmd` emits `04_bam_sort.sh` (local) or per-chunk `04_bam_sort_<chunk>.sbatch` (Slurm); `STAGE_SEQUENCE` now includes `bam_sort`.
+- Skip re-sort when sortbyname output is newer than input.
+
+**Checks performed:**
+- `pixi run python scripts/bam_sort.py --help`
+- `pixi run bam-sort-dry-run` (generated command includes `samtools sort -n`)
+- `pixi run e2e-dry-run` / `e2e-slurm-dry-run` (`04_bam_sort` in stage list)
+- Real run on `work/dd-met5-example/align/` chunk `0001`: forward 25M + reverse 28M sortbyname BAMs; `samtools view` shows adjacent read pairs share QNAME; re-run logs `skipped=1`
+
+**Status:** done
+
+**Notes:** Per-cell `split_bams` (SeekSoulMethyl `step3_split_bams.py`) is the natural follow-on stage.
+
 ## 2026-06-17 — demux filter_ch (CH chimeric filtering)
 
 **Task:** Add SeekSoulMethyl-aligned `filter_ch` to `demux_extract_bc` (default 2).

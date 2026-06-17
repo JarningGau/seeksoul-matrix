@@ -111,6 +111,24 @@ def discover_demux_align_chunks(
     return chunks
 
 
+def discover_bismark_pe_bams(
+    align_dir: Path,
+) -> list[tuple[str, Path, Path]]:
+    """Return sorted (chunk_id, forward_bam, reverse_bam) from Bismark align outputs."""
+    align_dir = Path(align_dir)
+    if not align_dir.is_dir():
+        return []
+
+    chunks: list[tuple[str, Path, Path]] = []
+    for fwd_bam in sorted(align_dir.glob("*.forward_1_bismark_bt2_pe.bam")):
+        if "_sortbyname" in fwd_bam.name:
+            continue
+        chunk_id = fwd_bam.name[: -len(".forward_1_bismark_bt2_pe.bam")]
+        rev_bam = align_dir / f"{chunk_id}.reverse_1_bismark_bt2_pe.bam"
+        chunks.append((chunk_id, fwd_bam, rev_bam))
+    return chunks
+
+
 def require_bismark_ref(path: Path) -> None:
     ref = Path(path)
     if not ref.is_dir():

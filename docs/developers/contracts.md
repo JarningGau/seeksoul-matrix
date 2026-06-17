@@ -4,9 +4,9 @@ Normative input/output contracts for seeksoul-matrix workflow stages.
 
 ## Main stage order (planned)
 
-`fastp_split -> demux_extract_bc -> bismark_align -> ...`
+`fastp_split -> demux_extract_bc -> bismark_align -> bam_sort -> ...`
 
-`fastp_split`, `demux_extract_bc`, and `bismark_align` are implemented in this repository revision.
+`fastp_split`, `demux_extract_bc`, `bismark_align`, and `bam_sort` are implemented in this repository revision.
 
 ### `fastp_split`
 
@@ -123,3 +123,26 @@ Contract:
 - Default `bismark_parallel=8`, `bismark_max_insert=1000` (aligned with SeekSoulMethyl `step2.nf`).
 - BAM read names retain demux format; Bismark writes `CB` and `UR` tags from read names.
 - `samtools sort`, UMI dedup, and per-cell BAM splitting are out of scope for this stage.
+
+### `bam_sort`
+
+Purpose: name-sort Bismark paired-end BAMs so read pairs are adjacent for downstream per-cell splitting.
+
+Inputs:
+
+- `work/<sample>/align/<chunk>.forward_1_bismark_bt2_pe.bam`
+- `work/<sample>/align/<chunk>.reverse_1_bismark_bt2_pe.bam`
+
+Per-chunk outputs under `work/<sample>/align/`:
+
+| File | Description |
+|------|-------------|
+| `<chunk>.forward_1_bismark_bt2_pe_sortbyname.bam` | forward-strand name-sorted BAM |
+| `<chunk>.reverse_1_bismark_bt2_pe_sortbyname.bam` | reverse-strand name-sorted BAM |
+
+Contract:
+
+- Uses `samtools sort -n -@ <sort_threads> -o <out> <in>` (aligned with SeekSoulMethyl `SORT_BAM_BY_NAME` in `step2.nf`).
+- Default `sort_threads=6`; unsorted source BAMs are retained.
+- If a sortbyname output exists and is newer than its input, that BAM is skipped on re-run.
+- BAM indexing, UMI dedup, and per-cell splitting are out of scope for this stage.
