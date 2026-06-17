@@ -7,6 +7,7 @@ import argparse
 import gzip
 import json
 import re
+import sys
 import time
 from collections import defaultdict
 from dataclasses import dataclass
@@ -15,6 +16,7 @@ from pathlib import Path
 from typing import Iterator, TextIO
 
 from cutadapt.adapters import BackAdapter, FrontAdapter
+from tqdm import tqdm
 
 ME5_POSITIONS = [42, 45, 46, 49, 54, 56, 75]
 ME5_NON_INSERT_LEN = 70
@@ -347,6 +349,63 @@ def output_paths(prefix: str | Path) -> dict[str, Path]:
     }
 
 
+def load_fastp_pair_total(fastp_json: Path) -> int:
+    data = json.loads(fastp_json.read_text(encoding="utf-8"))
+    read1 = data.get("read1_after_filtering", {}).get("total_reads")
+    if read1 is not None:
+        return int(read1)
+    after = data.get("summary", {}).get("after_filtering", {}).get("total_reads")
+    if after is not None:
+        return int(after) // 2
+    raise ValueError(f"no read count found in fastp report: {fastp_json}")
+
+
+def count_shard_r1_files(shard_dir: Path) -> int:
+    numbered = [
+        p
+        for p in shard_dir.glob("*.R1.fq.gz")
+        if re.fullmatch(r"\d+\.R1\.fq\.gz", p.name)
+    ]
+    if numbered:
+        return len(numbered)
+    legacy = list(shard_dir.glob("R1*.fq.gz"))
+    if legacy:
+        return len(legacy)
+    raise ValueError(f"no fastp shard R1 files found under {shard_dir}")
+
+
+def estimate_chunk_pair_total(fastp_json: Path) -> int:
+    shard_dir = fastp_json.parent
+    shard_count = count_shard_r1_files(shard_dir)
+    pair_total = load_fastp_pair_total(fastp_json)
+    return pair_total // shard_count
+
+
+def discover_fastp_json(r1_path: str | Path) -> Path | None:
+    shard_dir = Path(r1_path).resolve().parent
+    if shard_dir.name != "shard_fastq":
+        return None
+    candidate = shard_dir / "fastp.json"
+    return candidate if candidate.is_file() else None
+
+
+def resolve_progress_total(args: argparse.Namespace) -> int | None:
+    if args.total_reads is not None:
+        return int(args.total_reads)
+    fastp_json = Path(args.fastp_json) if args.fastp_json else discover_fastp_json(args.r1)
+    if fastp_json is None:
+        return None
+    try:
+        return estimate_chunk_pair_total(fastp_json)
+    except (OSError, ValueError, json.JSONDecodeError) as exc:
+        print(
+            f"[demux_extract_bc] warning: could not estimate progress total "
+            f"from {fastp_json}: {exc}",
+            file=sys.stderr,
+        )
+        return None
+
+
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(
         description="DD-MET5 demux: extract barcodes, C→T QC, and paired FASTQ output."
@@ -374,6 +433,15 @@ def parse_args() -> argparse.Namespace:
         type=int,
         default=6,
         help="gzip compression level for output FASTQ (0-9). Default: 6.",
+    )
+    parser.add_argument(
+        "--fastp-json",
+        help="fastp JSON report for progress-bar total (default: auto-detect in shard_fastq/).",
+    )
+    parser.add_argument(
+        "--total-reads",
+        type=int,
+        help="Override expected read-pair count for the progress bar.",
     )
     parser.add_argument(
         "--dry-run",
@@ -405,6 +473,8 @@ def main() -> int:
     ct_c_total = 0
     ct_t_total = 0
     seen_umi: set[tuple[str, str]] = set()
+    chunk_id = Path(args.output_prefix).name
+    total_pairs = resolve_progress_total(args)
 
     t0 = time.monotonic()
     with (
@@ -415,6 +485,13 @@ def main() -> int:
         gzip.open(paths["reverse_1"], "wt", encoding="utf-8", compresslevel=args.gzip_level) as rev1_out,
         gzip.open(paths["reverse_2"], "wt", encoding="utf-8", compresslevel=args.gzip_level) as rev2_out,
         open(paths["linker"], "w", encoding="utf-8") as linker_out,
+        tqdm(
+            total=total_pairs,
+            desc=f"demux {chunk_id}",
+            unit="pair",
+            unit_scale=True,
+            file=sys.stderr,
+        ) as progress,
     ):
         linker_out.write("CR\tUB\tC\tT\n")
         for rec in zip_longest(fastq_iter(r1_in), fastq_iter(r2_in)):
@@ -423,6 +500,7 @@ def main() -> int:
             h1, s1, p1, q1 = rec[0]
             h2, s2, p2, q2 = rec[1]
             stats["total"] += 1
+            progress.update(1)
             if has_17lme(s1):
                 stats["num_17lme"] += 1
 
@@ -498,7 +576,6 @@ def main() -> int:
             out1.write(f"{new_h1}\n{r1.sequence}\n{p1}\n{r1.qualities}\n")
             out2.write(f"{new_h2}\n{r2.sequence}\n{p2}\n{r2.qualities}\n")
 
-    chunk_id = Path(args.output_prefix).name
     stats_payload = build_stats_payload(
         chunk_id=chunk_id,
         input_r1=args.r1,

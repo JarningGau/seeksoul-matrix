@@ -1,5 +1,27 @@
 # Development log
 
+## 2026-06-17 — demux_extract_bc tqdm progress bar
+
+**Task:** Add read-pair progress bar to `demux_extract_bc` using tqdm; total from `fastp.json`.
+
+**Files changed:**
+- `scripts/demux_extract_bc.py`, `scripts/make_cmd.py`, `pixi.toml`, `pixi.lock`
+
+**Summary:**
+- Added `--fastp-json` and `--total-reads` CLI options; auto-detect `shard_fastq/fastp.json` when omitted.
+- Per-chunk total = `read1_after_filtering.total_reads` ÷ shard count (fastp `--split` does not emit per-chunk stats).
+- Wrapped main read-pair loop with tqdm on stderr; `make_cmd` passes `--fastp-json` in local and Slurm demux commands.
+
+**Checks performed:**
+- `pixi install` (tqdm added)
+- `pixi run python scripts/demux_extract_bc.py --help`
+- `pixi run demux-dry-run` (generated script includes `--fastp-json`)
+- Single-chunk run on `work/dd-met5-example/shard_fastq/0001`: tqdm reached 496k pairs; `funnel.total=496450` (estimate 496390 from fastp)
+
+**Status:** done
+
+**Notes:** Uneven fastp shard split may leave progress at ~100.01%; non-fastp inputs fall back to indeterminate tqdm.
+
 ## 2026-06-17 — demux shard discovery fix (dbit-matrix pattern)
 
 **Task:** Fix `FileNotFoundError` when `--stage all --submit` runs demux before fastp shard paths are known at script-generation time.

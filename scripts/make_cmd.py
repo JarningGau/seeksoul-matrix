@@ -171,6 +171,7 @@ def build_fastp_split_command(args: argparse.Namespace, sample_work: Path) -> st
 def build_demux_chunk_command(
     args: argparse.Namespace, r1_path: Path, r2_path: Path, out_prefix: Path
 ) -> str:
+    fastp_json = r1_path.parent / "fastp.json"
     return quoted(
         [
             sys.executable,
@@ -185,6 +186,8 @@ def build_demux_chunk_command(
             str(args.barcode_hamming_distance),
             "--gzip-level",
             str(args.gzip_level),
+            "--fastp-json",
+            str(fastp_json),
         ]
     )
 
@@ -277,13 +280,16 @@ def build_demux_chunks_from_config(
 def build_demux_local_batch_command(args: argparse.Namespace, sample_work: Path) -> str:
     chunk_dir = sample_work / "shard_fastq"
     demux_dir = sample_work / "demux"
+    fastp_json = chunk_dir / "fastp.json"
     chunk_dir_q = shlex.quote(str(chunk_dir))
     demux_dir_q = shlex.quote(str(demux_dir))
+    fastp_json_q = shlex.quote(str(fastp_json))
     py = quoted([sys.executable, "scripts/demux_extract_bc.py"])
     aggregate_cmd = build_aggregate_ct_command(demux_dir)
     return (
         f"chunk_dir={chunk_dir_q}\n"
         f"demux_dir={demux_dir_q}\n"
+        f"fastp_json={fastp_json_q}\n"
         "\n"
         "mkdir -p \"$demux_dir\"\n"
         "shopt -s nullglob\n"
@@ -307,7 +313,8 @@ def build_demux_local_batch_command(args: argparse.Namespace, sample_work: Path)
         f"--barcode-whitelist {shlex.quote(args.barcode_whitelist)} "
         '--output-prefix "$demux_dir/$chunk" '
         f"--barcode-hamming-distance {int(args.barcode_hamming_distance)} "
-        f"--gzip-level {int(args.gzip_level)}\n"
+        f"--gzip-level {int(args.gzip_level)} "
+        '--fastp-json "$fastp_json"\n'
         "done\n"
         "\n"
         f"{aggregate_cmd}\n"

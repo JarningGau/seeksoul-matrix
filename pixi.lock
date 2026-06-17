@@ -57,6 +57,7 @@ environments:
       - conda: https://mirrors2.westlake.edu.cn/ANACONDA/cloud/conda-forge/linux-64/readline-8.3-h853b02a_0.conda
       - conda: https://mirrors2.westlake.edu.cn/ANACONDA/cloud/bioconda/linux-64/samtools-1.23.1-ha83d96e_0.conda
       - conda: https://mirrors2.westlake.edu.cn/ANACONDA/cloud/conda-forge/linux-64/tk-8.6.13-noxft_h366c992_103.conda
+      - conda: https://mirrors2.westlake.edu.cn/ANACONDA/cloud/conda-forge/noarch/tqdm-4.68.2-pyh8f84b5b_1.conda
       - conda: https://mirrors2.westlake.edu.cn/ANACONDA/cloud/conda-forge/noarch/tzdata-2025c-hc9c84f9_1.conda
       - conda: https://mirrors2.westlake.edu.cn/ANACONDA/cloud/conda-forge/noarch/xopen-2.0.2-pyh707e725_2.conda
       - conda: https://mirrors2.westlake.edu.cn/ANACONDA/cloud/conda-forge/linux-64/zlib-ng-2.3.3-hceb46e0_1.conda
@@ -634,6 +635,19 @@ packages:
   license_family: BSD
   size: 3301196
   timestamp: 1769460227866
+- conda: https://mirrors2.westlake.edu.cn/ANACONDA/cloud/conda-forge/noarch/tqdm-4.68.2-pyh8f84b5b_1.conda
+  sha256: f3ac3dcc43f011835efe2718f5d78981935e8aa1e1d9741b63499dfdd8fa802c
+  md5: 99ee58c51aae7ee9ab947a0c6ce5a4c7
+  depends:
+  - python >=3.10
+  - __unix
+  - python
+  constrains:
+  - envwrap >=0.2
+  - ipywidgets >=6.0
+  license: MPL-2.0 and MIT
+  size: 94725
+  timestamp: 1781094943144
 - conda: https://mirrors2.westlake.edu.cn/ANACONDA/cloud/conda-forge/noarch/tzdata-2025c-hc9c84f9_1.conda
   sha256: 1d30098909076af33a35017eed6f2953af1c769e273a0626a04722ac4acaba3c
   md5: ad659d0a2b3e47e38d829aa8cad2d610

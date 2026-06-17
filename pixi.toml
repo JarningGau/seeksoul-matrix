@@ -17,6 +17,7 @@ check-bismark-env = "bash scripts/check_bismark_env.sh"
 [dependencies]
 python = "3.11.*"
 fastp = "0.24.*"
+tqdm = ">=4.66,<5"
 cutadapt = "5.0.*"
 bowtie2 = "2.5.*"
 samtools = ">=1.21,<2"
