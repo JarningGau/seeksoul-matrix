@@ -1,5 +1,24 @@
 # Development log
 
+## 2026-06-18 — seven-stage end-to-end (`--stage all` / `run.sh`)
+
+**Task:** Validate full methylation-only pipeline (`fastp_split` → `split_bams`) via local `run.sh` driver.
+
+**Files changed:**
+- `docs/developers/logs.md`, `AGENTS.md`
+
+**Summary:**
+- Ran `bash work/dd-met5-example/commands/run.sh` on `data/test_R1.fastq.gz` / `data/test_R2.fastq.gz` with `workflow/dd_met5_test.json` (`expected_cell_num=10`, `filter_ch=2`, 2 shards).
+- All seven stages completed in order: fastp → demux → bismark → bam_sort → count_mapped_reads → estimated_cells → split_bams.
+
+**Checks performed:**
+- `bash work/dd-met5-example/commands/run.sh` (local, all 7 stages)
+- Outputs under `work/dd-met5-example/`: 2 demux chunks (~224k valid reads/chunk, C→T 0.997); `qc.CtoT.tsv` 23,610 barcodes; `cells/filtered_barcode` 3,804 cells; per-chunk split BAMs (~3,804 forward/reverse cells each in `split_bams/`)
+
+**Status:** done
+
+**Notes:** Slurm `run.sbatch` generation only (cluster submit not tested). gexcb path not exercised in this e2e run.
+
 ## 2026-06-18 — step3 count / estimate / split (methylation-only + gexcb)
 
 **Task:** Implement `count_mapped_reads`, `estimated_cells`, and `split_bams` stages with mutually exclusive `expected_cell_num` (default 3000) vs `gexcb` barcode modes.
