@@ -198,6 +198,7 @@ Sample-level outputs under `work/<sample>/cells/`:
 Contract:
 
 - Default `expected_cell_num=3000`; 99th-percentile index × 0.1 read threshold (aligned with SeekSoulMethyl `step3_estimated_cells.py`).
+- Optional `force_cell_num`: when set, take top N barcodes by `aligned_reads` among barcodes with reads > 0 (aligned with SeekSoulMethyl `cell_identify.R` force-cell mode). `force_cell_num` overrides `expected_cell_num` filtering; both keys may appear in workflow JSON.
 - Skipped when workflow uses `gexcb` mode.
 
 ### `split_bams`

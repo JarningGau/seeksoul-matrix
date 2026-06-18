@@ -1,5 +1,26 @@
 # Development log
 
+## 2026-06-18 — estimated_cells force_cell_num
+
+**Task:** Add `--force-cell-num` to `estimated_cells` for top-N barcode selection by aligned_reads.
+
+**Files changed:**
+- `scripts/estimated_cells.py`, `scripts/make_cmd.py`
+- `workflow/dd_met5_test.json`
+- `docs/developers/contracts.md`, `docs/developers/logs.md`
+
+**Summary:**
+- New `force_filter_barcodes()`: nonzero reads only, sorted by reads desc (barcode tie-break), take top N.
+- When `force_cell_num` is set (CLI or workflow JSON), `make_cmd.py` emits `--force-cell-num` instead of `--expected-cell-num`.
+- `expected_cell_num` threshold path unchanged when `force_cell_num` is absent.
+
+**Checks performed:**
+- `estimated_cells.py --help`
+- `pixi run estimated-cells-dry-run` (generated command includes `--force-cell-num 10`)
+- Real run on `work/dd-met5-example` with `--force-cell-num 10` → `filtered_barcodes=10`
+
+**Status:** done
+
 ## 2026-06-18 — bam_to_allc stage
 
 **Task:** Implement `bam_to_allc` stage (ALLCools bam-to-allc on merged per-cell BAMs) and wire into `make_cmd.py` / `--stage all`.

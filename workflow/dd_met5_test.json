@@ -19,6 +19,7 @@
     "sort_threads": 6,
     "samtools_bin": "samtools",
     "expected_cell_num": 10,
+    "force_cell_num": 50,
     "split_bams_cores": 8,
     "merge_fr_bams_cores": 8,
     "genome_fa": "/mnt/wd-4t/resource/mouse-reference-GRCm39/fasta/genome.fa",

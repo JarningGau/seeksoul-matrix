@@ -31,6 +31,15 @@ def parse_args() -> argparse.Namespace:
         help="Expected number of cells for 99th-percentile threshold. Default: 3000.",
     )
     parser.add_argument(
+        "--force-cell-num",
+        type=int,
+        default=None,
+        help=(
+            "Take top N barcodes by aligned_reads (nonzero only). "
+            "When set, overrides --expected-cell-num threshold filtering."
+        ),
+    )
+    parser.add_argument(
         "--output-dir",
         help="Output directory (default: work-path/cells or align-dir parent/cells).",
     )
@@ -102,6 +111,28 @@ def filter_barcodes(
     return [(barcode, reads) for barcode, reads in merged_rows if reads > readscut]
 
 
+def force_filter_barcodes(
+    barcode_totals: dict[str, int],
+    force_cell_num: int,
+) -> list[tuple[str, int]]:
+    if force_cell_num <= 0:
+        raise ValueError("force_cell_num must be > 0")
+
+    nonzero_rows = [
+        (barcode, reads)
+        for barcode, reads in barcode_totals.items()
+        if reads > 0
+    ]
+    if not nonzero_rows:
+        return []
+
+    ranked_rows = sorted(
+        nonzero_rows,
+        key=lambda item: (-item[1], item[0]),
+    )
+    return ranked_rows[:force_cell_num]
+
+
 def write_outputs(
     output_dir: Path,
     barcode_totals: dict[str, int],
@@ -139,7 +170,10 @@ def main() -> int:
     align_dir, output_dir = resolve_paths(args)
     print(f"[estimated_cells] align_dir={align_dir}")
     print(f"[estimated_cells] output_dir={output_dir}")
-    print(f"[estimated_cells] expected_cell_num={args.expected_cell_num}")
+    if args.force_cell_num is not None:
+        print(f"[estimated_cells] force_cell_num={args.force_cell_num}")
+    else:
+        print(f"[estimated_cells] expected_cell_num={args.expected_cell_num}")
 
     if args.dry_run:
         csv_files = list(align_dir.glob("*_cb_aligned_reads_counts.csv"))
@@ -148,7 +182,10 @@ def main() -> int:
         return 0
 
     barcode_totals = load_barcode_totals(align_dir)
-    filtered_rows = filter_barcodes(barcode_totals, args.expected_cell_num)
+    if args.force_cell_num is not None:
+        filtered_rows = force_filter_barcodes(barcode_totals, args.force_cell_num)
+    else:
+        filtered_rows = filter_barcodes(barcode_totals, args.expected_cell_num)
     write_outputs(output_dir, barcode_totals, filtered_rows)
     print(f"[estimated_cells] total_barcodes={len(barcode_totals)}")
     print(f"[estimated_cells] filtered_barcodes={len(filtered_rows)}")

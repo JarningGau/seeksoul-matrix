@@ -191,6 +191,14 @@ def parse_args() -> argparse.Namespace:
         ),
     )
     parser.add_argument(
+        "--force-cell-num",
+        type=int,
+        help=(
+            "Top N barcodes by aligned_reads for estimated_cells. "
+            "When set, overrides --expected-cell-num threshold filtering."
+        ),
+    )
+    parser.add_argument(
         "--split-bams-cores",
         type=int,
         help="CPU cores for split_bams parallel batches. Default: 8.",
@@ -445,17 +453,22 @@ def build_count_mapped_reads_chunk_command(sample_work: Path, chunk_id: str) -> 
     )
 
 
-def build_estimated_cells_command(sample_work: Path, expected_cell_num: int) -> str:
-    return quoted(
-        [
-            sys.executable,
-            "scripts/estimated_cells.py",
-            "--work-path",
-            str(sample_work),
-            "--expected-cell-num",
-            str(expected_cell_num),
-        ]
-    )
+def build_estimated_cells_command(
+    sample_work: Path,
+    expected_cell_num: int,
+    force_cell_num: int | None = None,
+) -> str:
+    command = [
+        sys.executable,
+        "scripts/estimated_cells.py",
+        "--work-path",
+        str(sample_work),
+    ]
+    if force_cell_num is not None:
+        command.extend(["--force-cell-num", str(force_cell_num)])
+    else:
+        command.extend(["--expected-cell-num", str(expected_cell_num)])
+    return quoted(command)
 
 
 def build_split_bams_work_command(args: argparse.Namespace, sample_work: Path) -> str:
@@ -874,6 +887,7 @@ def resolve_settings(args: argparse.Namespace) -> dict:
         "samtools_bin": pick(args.samtools_bin, cfg.get("samtools_bin")),
         "gexcb": pick(args.gexcb, cfg.get("gexcb")),
         "expected_cell_num": pick(args.expected_cell_num, cfg.get("expected_cell_num")),
+        "force_cell_num": pick(args.force_cell_num, cfg.get("force_cell_num")),
         "split_bams_cores": pick(args.split_bams_cores, cfg.get("split_bams_cores")),
         "merge_fr_bams_cores": pick(
             args.merge_fr_bams_cores, cfg.get("merge_fr_bams_cores")
@@ -929,6 +943,10 @@ def resolve_settings(args: argparse.Namespace) -> dict:
         if settings["expected_cell_num"] is None:
             settings["expected_cell_num"] = DEFAULT_EXPECTED_CELL_NUM
         settings["expected_cell_num"] = int(settings["expected_cell_num"])
+    if settings.get("force_cell_num") is not None:
+        settings["force_cell_num"] = int(settings["force_cell_num"])
+        if settings["force_cell_num"] <= 0:
+            raise ValueError("force_cell_num must be > 0")
     if stage in ("split_bams", "all") or settings["_barcode_mode"] == "gexcb":
         settings["split_bams_cores"] = int(settings["split_bams_cores"] or 8)
     if stage in ("merge_fr_bams", "all"):
@@ -1658,7 +1676,9 @@ def main() -> int:
     elif settings["stage"] == "estimated_cells":
         script_name = stage_script_name(settings, "estimated_cells")
         command = build_estimated_cells_command(
-            sample_work, settings["expected_cell_num"]
+            sample_work,
+            settings["expected_cell_num"],
+            settings.get("force_cell_num"),
         )
         if settings["runner"] == "local":
             script_path = command_dir / script_name
