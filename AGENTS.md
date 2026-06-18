@@ -57,6 +57,7 @@ pixi run count-mapped-reads-dry-run # count_mapped_reads script generation
 pixi run estimated-cells-dry-run   # estimated_cells script generation
 pixi run split-bams-dry-run        # split_bams script generation
 pixi run merge-fr-bams-dry-run     # merge_fr_bams script generation
+pixi run bam-to-allc-dry-run       # bam_to_allc script generation
 pixi run e2e-dry-run           # --stage all (local run.sh) dry-run
 pixi run e2e-slurm-dry-run     # --stage all (Slurm run.sbatch) dry-run
 ```
@@ -66,6 +67,13 @@ Bismark environment (seekgene fork; required for `bismark_align`):
 ```bash
 pixi run setup-bismark      # install seekgene/Bismark into pixi env
 pixi run check-bismark-env  # verify bismark, bowtie2, samtools, seekgene flags
+```
+
+ALLCools environment (seekgene fork; required for `bam_to_allc`):
+
+```bash
+pixi run setup-allcools      # install seekgene/ALLCools into pixi env
+pixi run check-allcools-env  # verify allcools and samtools
 ```
 
 End-to-end script generation and run:
@@ -90,10 +98,11 @@ Implemented stages (`scripts/make_cmd.py`; contracts in `docs/developers/contrac
 | `estimated_cells` | `scripts/estimated_cells.py` | **validated** |
 | `split_bams` | `scripts/split_bams.py` | **validated** |
 | `merge_fr_bams` | `scripts/merge_fr_bams.py` | **validated** |
+| `bam_to_allc` | `scripts/bam_to_allc.py` | **validated** |
 
-`--stage all` generates per-stage scripts under `work/<sample>/commands/` plus a driver: `run.sh` (local) or `run.sbatch` (Slurm DAG). Barcode selection is **mutually exclusive**: `expected_cell_num` (default 3000, methylation-only path: count → estimate → split → merge) or `gexcb` (RNA barcodes, split → merge). Slurm emits per-chunk sbatch files for parallel stages and aggregate jobs for `estimated_cells` / `aggregate_ct_qc`.
+`--stage all` generates per-stage scripts under `work/<sample>/commands/` plus a driver: `run.sh` (local) or `run.sbatch` (Slurm DAG). Barcode selection is **mutually exclusive**: `expected_cell_num` (default 3000, methylation-only path: count → estimate → split → merge → allc) or `gexcb` (RNA barcodes, split → merge → allc). Slurm emits per-chunk sbatch files for parallel stages and aggregate jobs for `estimated_cells` / `aggregate_ct_qc`.
 
-Eight-stage driver (`fastp_split` → `merge_fr_bams`) script generation validated; `merge_fr_bams` real run on `work/dd-met5-example` chunk `0001` (see `docs/developers/logs.md`). Slurm sbatch generation validated for all stages; cluster submit not tested in dev.
+Nine-stage driver (`fastp_split` → `bam_to_allc`) script generation validated; `merge_fr_bams` and `bam_to_allc` real runs on `work/dd-met5-example` chunk `0001` (see `docs/developers/logs.md`). Slurm sbatch generation validated for all stages; cluster submit not tested in dev.
 
 ## Coding Style & Naming Conventions
 

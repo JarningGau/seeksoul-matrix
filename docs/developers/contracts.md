@@ -4,9 +4,9 @@ Normative input/output contracts for seeksoul-matrix workflow stages.
 
 ## Main stage order (planned)
 
-`fastp_split -> demux_extract_bc -> bismark_align -> bam_sort -> (count_mapped_reads -> estimated_cells)? -> split_bams -> merge_fr_bams -> ...`
+`fastp_split -> demux_extract_bc -> bismark_align -> bam_sort -> (count_mapped_reads -> estimated_cells)? -> split_bams -> merge_fr_bams -> bam_to_allc -> ...`
 
-`fastp_split`, `demux_extract_bc`, `bismark_align`, `bam_sort`, `count_mapped_reads`, `estimated_cells`, `split_bams`, and `merge_fr_bams` are implemented in this repository revision.
+`fastp_split`, `demux_extract_bc`, `bismark_align`, `bam_sort`, `count_mapped_reads`, `estimated_cells`, `split_bams`, `merge_fr_bams`, and `bam_to_allc` are implemented in this repository revision.
 
 ### Barcode selection mode (mutually exclusive)
 
@@ -252,3 +252,31 @@ Contract:
 - Default `merge_fr_bams_cores=8`; one samtools thread per barcode merge, parallelized by process pool.
 - Skip output BAM when existing file passes `samtools quickcheck`.
 - Cross-chunk barcode consolidation, allcools, and UMI dedup are out of scope for this stage.
+
+### `bam_to_allc`
+
+Purpose: convert merged per-cell BAMs to ALLC format via seekgene ALLCools `bam-to-allc` (SeekSoulMethyl `ALLCOOLS_BAM_TO_ALLC` / `step3_bam_to_allc.py`).
+
+Inputs (per chunk):
+
+- `work/<sample>/split_bams/merged/<chunk>_merged_fr_bam/*.bam`
+- `work/<sample>/split_bams/merged/<chunk>_merge_filtered_barcode`
+- `genome_fa`: reference genome FASTA (workflow JSON)
+- `chrom_size_path`: chromosome sizes BED (workflow JSON; required for workflow parity; not passed to bam-to-allc CLI)
+
+Outputs under `work/<sample>/allcools/`:
+
+| File / dir | Description |
+|------------|-------------|
+| `<chunk>_merged_fr_bam_allcools/<barcode>_allc.gz` | per-cell ALLC (gzip) |
+| `<chunk>_merged_fr_bam_allcools/<barcode>_allc.count.csv` | optional count sidecar from `--save_count_df` |
+
+Contract:
+
+- Per barcode: `samtools sort` → `samtools index` → `allcools bam-to-allc --reference_fasta <genome_fa> --convert_bam_strandness --tag UR --save_count_df`; intermediate sorted BAM removed on success.
+- Only barcodes listed in `<chunk>_merge_filtered_barcode` are processed.
+- Default `bam_to_allc_cores=8`, `allcools_tag=UR`, `align_method=bismark`.
+- Skip barcode when `<barcode>_allc.gz` exists and is non-empty.
+- `OPENBLAS_NUM_THREADS=1`, `OMP_NUM_THREADS=1` during parallel workers.
+- Requires seekgene ALLCools fork (`pixi run setup-allcools`).
+- `generate-dataset`, merge/extract allc, and cross-chunk metric consolidation are out of scope for this stage.

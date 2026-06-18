@@ -21,6 +21,10 @@
     "expected_cell_num": 10,
     "split_bams_cores": 8,
     "merge_fr_bams_cores": 8,
+    "genome_fa": "/mnt/wd-4t/resource/mouse-reference-GRCm39/fasta/genome.fa",
+    "chrom_size_path": "/mnt/wd-4t/resource/mouse-reference-GRCm39/bed/chr_nochrM.bed",
+    "bam_to_allc_cores": 8,
+    "allcools_tag": "UR",
     "slurm": {
         "fastp_split": {
             "partition": "amd-ep2",
@@ -60,6 +64,11 @@
         "merge_fr_bams": {
             "partition": "amd-ep2",
             "mem": "32G",
+            "cpus_per_task": 8
+        },
+        "bam_to_allc": {
+            "partition": "amd-ep2",
+            "mem": "64G",
             "cpus_per_task": 8
         }
     }

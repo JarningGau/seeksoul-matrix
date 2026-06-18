@@ -1,5 +1,30 @@
 # Development log
 
+## 2026-06-18 — bam_to_allc stage
+
+**Task:** Implement `bam_to_allc` stage (ALLCools bam-to-allc on merged per-cell BAMs) and wire into `make_cmd.py` / `--stage all`.
+
+**Files changed:**
+- `scripts/bam_to_allc.py`, `scripts/install_seekgene_allcools.sh`, `scripts/check_allcools_env.sh`
+- `scripts/workflow_input_checks.py`, `scripts/make_cmd.py`
+- `workflow/dd_met5_test.json`, `pixi.toml`, `pixi.lock`
+- `docs/developers/contracts.md`, `AGENTS.md`, `docs/developers/logs.md`
+
+**Summary:**
+- Per-chunk ALLCools conversion: `split_bams/merged/<chunk>_merged_fr_bam/*.bam` → `allcools/<chunk>_merged_fr_bam_allcools/<barcode>_allc.gz` with `--convert_bam_strandness --tag UR --save_count_df`.
+- Stage 09 (methy-only) / 07 (gexcb); requires `genome_fa` + `chrom_size_path` in workflow JSON; seekgene ALLCools via `pixi run setup-allcools`.
+- Added `pip` to pixi dependencies for ALLCools install.
+
+**Checks performed:**
+- `pixi run setup-allcools`, `check-allcools-env` (allcools 1.2.0)
+- `pixi run bam-to-allc-dry-run`, `bam_to_allc.py --help` / `--dry-run` (chunk 0001: 3,805 barcodes)
+- Smoke real run: 1 barcode (`AAAGAAGAGAGGAATAA`) → `*_allc.gz` + `.count.csv` + `.tbi` in ~14s
+- `pixi run e2e-dry-run` / `e2e-slurm-dry-run` — `09_bam_to_allc` in driver
+
+**Status:** done
+
+**Notes:** Full chunk 0001 (3,805 barcodes) not run in dev (CPU-heavy). Slurm cluster submit not tested.
+
 ## 2026-06-18 — merge_fr_bams stage
 
 **Task:** Implement `merge_fr_bams` stage (forward/reverse per-cell BAM merge) and wire into `make_cmd.py` / `--stage all`.

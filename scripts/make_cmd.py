@@ -24,8 +24,9 @@ POST_BAM_SORT_METHY_ONLY = [
     "estimated_cells",
     "split_bams",
     "merge_fr_bams",
+    "bam_to_allc",
 ]
-POST_BAM_SORT_GEXCB = ["split_bams", "merge_fr_bams"]
+POST_BAM_SORT_GEXCB = ["split_bams", "merge_fr_bams", "bam_to_allc"]
 ALL_STAGE_NAMES = [*BASE_STAGE_SEQUENCE, *POST_BAM_SORT_METHY_ONLY]
 STAGE_CHOICES = [*ALL_STAGE_NAMES, "all"]
 SLURM_NEST_STAGE_KEYS = frozenset(ALL_STAGE_NAMES)
@@ -38,6 +39,7 @@ STAGE_REQUIRED_FIELDS = {
     "estimated_cells": [],
     "split_bams": [],
     "merge_fr_bams": [],
+    "bam_to_allc": ["genome_fa", "chrom_size_path"],
 }
 DEFAULT_BARCODE_WHITELIST = "whitelist/DD-MET5/U3CB_methylation.txt.gz"
 DEFAULT_EXPECTED_CELL_NUM = 3000
@@ -197,6 +199,30 @@ def parse_args() -> argparse.Namespace:
         "--merge-fr-bams-cores",
         type=int,
         help="CPU cores for merge_fr_bams parallel per-barcode merges. Default: 8.",
+    )
+    parser.add_argument(
+        "--genome-fa",
+        help="Reference genome FASTA for bam_to_allc.",
+    )
+    parser.add_argument(
+        "--chrom-size-path",
+        help="Chromosome sizes BED for bam_to_allc workflow parity.",
+    )
+    parser.add_argument(
+        "--bam-to-allc-cores",
+        type=int,
+        help="CPU cores for bam_to_allc parallel per-barcode conversion. Default: 8.",
+    )
+    parser.add_argument(
+        "--allcools-tag",
+        help="BAM tag for ALLCools UMI correction. Default: UR.",
+    )
+    parser.add_argument(
+        "--allcools-bin",
+        help=(
+            "allcools executable path or command name. "
+            "Default: allcools from current Python env if available, else allcools."
+        ),
     )
     parser.add_argument(
         "--submit",
@@ -519,6 +545,61 @@ def build_merge_fr_bams_chunk_command(
     )
 
 
+def build_bam_to_allc_work_command(
+    args: argparse.Namespace,
+    sample_work: Path,
+) -> str:
+    return quoted(
+        [
+            sys.executable,
+            "scripts/bam_to_allc.py",
+            "--work-path",
+            str(sample_work),
+            "--genome-fa",
+            args.genome_fa,
+            "--chrom-size-path",
+            args.chrom_size_path,
+            "--cores",
+            str(args.bam_to_allc_cores),
+            "--allcools-tag",
+            args.allcools_tag,
+            "--samtools-bin",
+            args.samtools_bin,
+            "--allcools-bin",
+            args.allcools_bin,
+        ]
+    )
+
+
+def build_bam_to_allc_chunk_command(
+    args: argparse.Namespace,
+    sample_work: Path,
+    chunk_id: str,
+) -> str:
+    return quoted(
+        [
+            sys.executable,
+            "scripts/bam_to_allc.py",
+            "--work-path",
+            str(sample_work),
+            "--chunk-id",
+            chunk_id,
+            "--genome-fa",
+            args.genome_fa,
+            "--chrom-size-path",
+            args.chrom_size_path,
+            "--cores",
+            str(args.bam_to_allc_cores),
+            "--allcools-tag",
+            args.allcools_tag,
+            "--samtools-bin",
+            args.samtools_bin,
+            "--allcools-bin",
+            args.allcools_bin,
+        ]
+    )
+
+
 def build_demux_chunks_from_config(
     sample_work: Path, number_of_split_parts: int
 ) -> list[tuple[str, Path, Path, Path]]:
@@ -712,6 +793,27 @@ def validate_inputs_for_stage(
             wic.require_dir(f"split_bams/{forward_dir.name}", forward_dir)
             wic.require_dir(f"split_bams/{reverse_dir.name}", reverse_dir)
         wic.require_optional_executable_path("samtools_bin", settings["samtools_bin"])
+    elif stage == "bam_to_allc":
+        merged_root = sample_work / "split_bams" / "merged"
+        chunks = wic.discover_merged_fr_bam_chunks(merged_root)
+        if not chunks:
+            raise ValueError(f"no merged FR BAM chunks found under {merged_root}")
+        for _chunk_id, bam_dir, filtered_barcode in chunks:
+            wic.require_dir(f"split_bams/merged/{bam_dir.name}", bam_dir)
+            wic.require_file(
+                f"split_bams/merged/{filtered_barcode.name}",
+                filtered_barcode,
+            )
+        wic.require_file(
+            "genome_fa",
+            wic.resolve_config_path(settings["genome_fa"]),
+        )
+        wic.require_file(
+            "chrom_size_path",
+            wic.resolve_config_path(settings["chrom_size_path"]),
+        )
+        wic.require_optional_executable_path("samtools_bin", settings["samtools_bin"])
+        wic.require_optional_executable_path("allcools_bin", settings["allcools_bin"])
     else:
         raise ValueError(f"unsupported stage for input validation: {stage}")
 
@@ -776,6 +878,11 @@ def resolve_settings(args: argparse.Namespace) -> dict:
         "merge_fr_bams_cores": pick(
             args.merge_fr_bams_cores, cfg.get("merge_fr_bams_cores")
         ),
+        "genome_fa": pick(args.genome_fa, cfg.get("genome_fa")),
+        "chrom_size_path": pick(args.chrom_size_path, cfg.get("chrom_size_path")),
+        "bam_to_allc_cores": pick(args.bam_to_allc_cores, cfg.get("bam_to_allc_cores")),
+        "allcools_tag": pick(args.allcools_tag, cfg.get("allcools_tag")),
+        "allcools_bin": pick(args.allcools_bin, cfg.get("allcools_bin")),
         "slurm_partition": pick(args.slurm_partition, stage_slurm_cfg.get("partition")),
         "slurm_mem": pick(args.slurm_mem, stage_slurm_cfg.get("mem")),
         "slurm_cpus_per_task": pick(
@@ -828,6 +935,15 @@ def resolve_settings(args: argparse.Namespace) -> dict:
         settings["merge_fr_bams_cores"] = int(settings["merge_fr_bams_cores"] or 8)
         settings["samtools_bin"] = normalize_executable_setting(
             settings["samtools_bin"], "samtools"
+        )
+    if stage in ("bam_to_allc", "all"):
+        settings["bam_to_allc_cores"] = int(settings["bam_to_allc_cores"] or 8)
+        settings["allcools_tag"] = settings["allcools_tag"] or "UR"
+        settings["samtools_bin"] = normalize_executable_setting(
+            settings["samtools_bin"], "samtools"
+        )
+        settings["allcools_bin"] = normalize_executable_setting(
+            settings["allcools_bin"], "allcools"
         )
     settings["_stage_sequence"] = build_stage_sequence(settings)
     if stage in ("count_mapped_reads", "estimated_cells") and settings["_barcode_mode"] == "gexcb":
@@ -1013,6 +1129,19 @@ def driver_scripts_for_stage(
             script
             for script in scripts
             if script.name.startswith(f"{prefix}_merge_fr_bams_")
+            and script.suffix == ".sbatch"
+        ]
+    if stage_name == "bam_to_allc":
+        if runner == "local":
+            return [
+                script
+                for script in scripts
+                if script.name == f"{prefix}_bam_to_allc.sh"
+            ]
+        return [
+            script
+            for script in scripts
+            if script.name.startswith(f"{prefix}_bam_to_allc_")
             and script.suffix == ".sbatch"
         ]
     return scripts
@@ -1663,6 +1792,68 @@ def main() -> int:
                 if not settings["dry_run"]:
                     slurm_args = argparse.Namespace(
                         job_name=f"seeksoul_merge_{settings['sample_id']}_{chunk_id}",
+                        slurm_partition=settings["slurm_partition"],
+                        slurm_mem=settings["slurm_mem"],
+                        slurm_cpus_per_task=settings["slurm_cpus_per_task"],
+                        slurm_output=chunk_output,
+                        slurm_error=chunk_error,
+                    )
+                    generate_slurm_script(command, script_path, log_dir, slurm_args)
+                generated_scripts.append(script_path)
+    elif settings["stage"] == "bam_to_allc":
+        command_args = argparse.Namespace(
+            genome_fa=settings["genome_fa"],
+            chrom_size_path=settings["chrom_size_path"],
+            bam_to_allc_cores=settings["bam_to_allc_cores"],
+            allcools_tag=settings["allcools_tag"],
+            samtools_bin=settings["samtools_bin"],
+            allcools_bin=settings["allcools_bin"],
+        )
+        if settings["runner"] == "local":
+            script_path = command_dir / stage_script_name(settings, "bam_to_allc")
+            command = build_bam_to_allc_work_command(command_args, sample_work)
+            print(f"[make_cmd] runner={settings['runner']}")
+            print(f"[make_cmd] stage={settings['stage']}")
+            print(f"[make_cmd] sample_id={settings['sample_id']}")
+            print(f"[make_cmd] script={script_path}")
+            print(f"[make_cmd] command={command}")
+            if settings["dry_run"]:
+                return 0
+            generate_local_script(command, script_path)
+            generated_scripts.append(script_path)
+        else:
+            chunks = wic.discover_merged_fr_bam_chunks(
+                sample_work / "split_bams" / "merged"
+            )
+            if not chunks:
+                raise ValueError(
+                    "no merged FR BAM chunks found for bam_to_allc script generation"
+                )
+            print(f"[make_cmd] runner={settings['runner']}")
+            print(f"[make_cmd] stage={settings['stage']}")
+            print(f"[make_cmd] sample_id={settings['sample_id']}")
+            print(f"[make_cmd] chunk_count={len(chunks)}")
+            for chunk_id, _bam_dir, _filtered_barcode in chunks:
+                base_name = stage_script_name(
+                    settings, "bam_to_allc", suffix="sbatch", chunk_id=chunk_id
+                ).removesuffix(".sbatch")
+                script_path = command_dir / f"{base_name}.sbatch"
+                command = build_bam_to_allc_chunk_command(
+                    command_args, sample_work, chunk_id
+                )
+                chunk_output = settings["slurm_output"].replace(
+                    "%x",
+                    f"seeksoul_allc_{settings['sample_id']}_{chunk_id}",
+                )
+                chunk_error = settings["slurm_error"].replace(
+                    "%x",
+                    f"seeksoul_allc_{settings['sample_id']}_{chunk_id}",
+                )
+                print(f"[make_cmd] script={script_path}")
+                print(f"[make_cmd] command={command}")
+                if not settings["dry_run"]:
+                    slurm_args = argparse.Namespace(
+                        job_name=f"seeksoul_allc_{settings['sample_id']}_{chunk_id}",
                         slurm_partition=settings["slurm_partition"],
                         slurm_mem=settings["slurm_mem"],
                         slurm_cpus_per_task=settings["slurm_cpus_per_task"],

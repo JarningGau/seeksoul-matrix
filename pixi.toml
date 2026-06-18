@@ -14,13 +14,17 @@ count-mapped-reads-dry-run = "python scripts/make_cmd.py --workflow-config workf
 estimated-cells-dry-run = "python scripts/make_cmd.py --workflow-config workflow/dd_met5_test.json --stage estimated_cells --skip-workdir-input-checks --dry-run"
 split-bams-dry-run = "python scripts/make_cmd.py --workflow-config workflow/dd_met5_test.json --stage split_bams --skip-workdir-input-checks --dry-run"
 merge-fr-bams-dry-run = "python scripts/make_cmd.py --workflow-config workflow/dd_met5_test.json --stage merge_fr_bams --skip-workdir-input-checks --dry-run"
+bam-to-allc-dry-run = "python scripts/make_cmd.py --workflow-config workflow/dd_met5_test.json --stage bam_to_allc --skip-workdir-input-checks --dry-run"
 e2e-dry-run = "python scripts/make_cmd.py --workflow-config workflow/dd_met5_test.json --stage all --dry-run"
 e2e-slurm-dry-run = "python scripts/make_cmd.py --workflow-config workflow/dd_met5_test.json --stage all --runner slurm --dry-run"
 setup-bismark = "bash scripts/install_seekgene_bismark.sh"
 check-bismark-env = "bash scripts/check_bismark_env.sh"
+setup-allcools = "bash scripts/install_seekgene_allcools.sh"
+check-allcools-env = "bash scripts/check_allcools_env.sh"
 
 [dependencies]
 python = "3.11.*"
+pip = "*"
 fastp = "0.24.*"
 tqdm = ">=4.66,<5"
 cutadapt = "5.0.*"

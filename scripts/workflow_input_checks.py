@@ -180,6 +180,24 @@ def split_bams_strand_dir(split_root: Path, sortbyname_bam: Path) -> Path:
     return split_root / prefix
 
 
+def discover_merged_fr_bam_chunks(
+    merged_root: Path,
+) -> list[tuple[str, Path, Path]]:
+    """Return sorted (chunk_id, bam_dir, filtered_barcode_path) from merge_fr_bams."""
+    merged_root = Path(merged_root)
+    if not merged_root.is_dir():
+        return []
+
+    chunks: list[tuple[str, Path, Path]] = []
+    for bam_dir in sorted(merged_root.glob("*_merged_fr_bam")):
+        if not bam_dir.is_dir():
+            continue
+        chunk_id = bam_dir.name[: -len("_merged_fr_bam")]
+        filtered_barcode = merged_root / f"{chunk_id}_merge_filtered_barcode"
+        chunks.append((chunk_id, bam_dir, filtered_barcode))
+    return chunks
+
+
 def resolve_barcode_mode(settings: dict) -> str:
     """Return 'gexcb' or 'expected_cell_num' (mutually exclusive)."""
     gexcb = settings.get("gexcb")
