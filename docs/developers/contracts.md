@@ -4,9 +4,9 @@ Normative input/output contracts for seeksoul-matrix workflow stages.
 
 ## Main stage order (planned)
 
-`fastp_split -> demux_extract_bc -> bismark_align -> bam_sort -> (count_mapped_reads -> estimated_cells)? -> split_bams -> ...`
+`fastp_split -> demux_extract_bc -> bismark_align -> bam_sort -> (count_mapped_reads -> estimated_cells)? -> split_bams -> merge_fr_bams -> ...`
 
-`fastp_split`, `demux_extract_bc`, `bismark_align`, `bam_sort`, `count_mapped_reads`, `estimated_cells`, and `split_bams` are implemented in this repository revision.
+`fastp_split`, `demux_extract_bc`, `bismark_align`, `bam_sort`, `count_mapped_reads`, `estimated_cells`, `split_bams`, and `merge_fr_bams` are implemented in this repository revision.
 
 ### Barcode selection mode (mutually exclusive)
 
@@ -225,4 +225,30 @@ Contract:
 
 - Input BAM must be sorted by read name; groups reads by `{CB}` prefix of QNAME (`qname.split("_")[0]`).
 - Default `split_bams_cores=8` for parallel batch splitting.
-- Forward/reverse merge, allcools, and UMI dedup are out of scope for this stage.
+- allcools and UMI dedup are out of scope for this stage.
+
+### `merge_fr_bams`
+
+Purpose: merge forward and reverse per-cell split BAMs into one BAM per barcode (SeekSoulMethyl `MERGE_BISMARK_BAM`).
+
+Inputs (per chunk):
+
+- `work/<sample>/split_bams/<chunk>.forward_1/*.bam`
+- `work/<sample>/split_bams/<chunk>.reverse_1/*.bam`
+- `*_filtered_barcode` and `*_filtered_barcode_reads_counts.csv` under both strand directories
+
+Outputs under `work/<sample>/split_bams/merged/`:
+
+| File / dir | Description |
+|------------|-------------|
+| `<chunk>_merged_fr_bam/<barcode>.bam` | merged single-cell BAM (e.g. `0001_merged_fr_bam`) |
+| `<chunk>_merge_filtered_barcode` | union of F/R filtered barcodes |
+| `<chunk>_merge_filtered_barcode_reads_counts.csv` | `reads_counts,barcode`; summed across strands |
+
+Contract:
+
+- Both strands present: `samtools merge -n -@ <threads> -o <out> <f> <r>`.
+- Single strand only: copy input BAM to output path.
+- Default `merge_fr_bams_cores=8`; one samtools thread per barcode merge, parallelized by process pool.
+- Skip output BAM when existing file passes `samtools quickcheck`.
+- Cross-chunk barcode consolidation, allcools, and UMI dedup are out of scope for this stage.

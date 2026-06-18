@@ -1,5 +1,28 @@
 # Development log
 
+## 2026-06-18 — merge_fr_bams stage
+
+**Task:** Implement `merge_fr_bams` stage (forward/reverse per-cell BAM merge) and wire into `make_cmd.py` / `--stage all`.
+
+**Files changed:**
+- `scripts/merge_fr_bams.py`, `scripts/workflow_input_checks.py`, `scripts/make_cmd.py`
+- `workflow/dd_met5_test.json`, `pixi.toml`
+- `docs/developers/contracts.md`, `AGENTS.md`, `docs/developers/logs.md`
+
+**Summary:**
+- Per-chunk merge of `split_bams/<chunk>.{forward,reverse}_1/<barcode>.bam` → `split_bams/merged/<chunk>_merged_fr_bam/<barcode>.bam` via `samtools merge -n` (single-strand copy fallback).
+- Aggregates `*_merge_filtered_barcode` and `*_merge_filtered_barcode_reads_counts.csv` across strands.
+- Stage 08 (methy-only) / 06 (gexcb); local single script or Slurm per-chunk sbatch.
+
+**Checks performed:**
+- `pixi run merge-fr-bams-dry-run`, `merge_fr_bams.py --help` / `--dry-run`
+- Real run chunk `0001`: 3,805 merged BAMs in ~56s; `samtools quickcheck` pass; sample barcode read counts forward+reverse=merged (10+10=20)
+- `pixi run e2e-dry-run` / `e2e-slurm-dry-run` — `08_merge_fr_bams` in driver
+
+**Status:** done
+
+**Notes:** allcools not in scope. Full-sample merge (both chunks) not run in this check; chunk 0001 only.
+
 ## 2026-06-18 — seven-stage end-to-end (`--stage all` / `run.sh`)
 
 **Task:** Validate full methylation-only pipeline (`fastp_split` → `split_bams`) via local `run.sh` driver.

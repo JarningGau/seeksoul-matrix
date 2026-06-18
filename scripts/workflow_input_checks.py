@@ -18,6 +18,11 @@ def require_file(label: str, path: Path) -> None:
         raise ValueError(f"missing required file ({label}): {path}")
 
 
+def require_dir(label: str, path: Path) -> None:
+    if not path.is_dir():
+        raise ValueError(f"missing required directory ({label}): {path}")
+
+
 def looks_like_filesystem_path(s: str) -> bool:
     return "/" in s or s.startswith(".") or s.startswith("~")
 
@@ -148,6 +153,24 @@ def discover_bismark_sortbyname_bams(
 def counts_output_path(bam_path: Path) -> Path:
     """Map unsorted BAM to per-barcode counts CSV path."""
     return bam_path.parent / f"{bam_path.stem}_cb_aligned_reads_counts.csv"
+
+
+def discover_split_bam_chunk_pairs(
+    split_root: Path,
+) -> list[tuple[str, Path, Path]]:
+    """Return sorted (chunk_id, forward_dir, reverse_dir) from split_bams outputs."""
+    split_root = Path(split_root)
+    if not split_root.is_dir():
+        return []
+
+    pairs: list[tuple[str, Path, Path]] = []
+    for forward_dir in sorted(split_root.glob("*.forward_1")):
+        if not forward_dir.is_dir():
+            continue
+        chunk_id = forward_dir.name[: -len(".forward_1")]
+        reverse_dir = split_root / f"{chunk_id}.reverse_1"
+        pairs.append((chunk_id, forward_dir, reverse_dir))
+    return pairs
 
 
 def split_bams_strand_dir(split_root: Path, sortbyname_bam: Path) -> Path:
