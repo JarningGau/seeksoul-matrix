@@ -1,5 +1,24 @@
 # Development log
 
+## 2026-06-18 — nine-stage end-to-end (`--stage all` / `run.sh`)
+
+**Task:** Validate full methylation-only pipeline (`fastp_split` → `bam_to_allc`) via local `run.sh` driver.
+
+**Files changed:**
+- `docs/developers/logs.md`, `AGENTS.md`
+
+**Summary:**
+- Ran `bash work/dd-met5-example/commands/run.sh` on `data/test_R1.fastq.gz` / `data/test_R2.fastq.gz` with `workflow/dd_met5_test.json` (`force_cell_num=10`, `filter_ch=2`, 2 shards).
+- All nine stages completed in order: fastp → demux → bismark → bam_sort → count_mapped_reads → estimated_cells → split_bams → merge_fr_bams → bam_to_allc.
+
+**Checks performed:**
+- `bash work/dd-met5-example/commands/run.sh` (local, all 9 stages)
+- Outputs under `work/dd-met5-example/`: chunks `0001` and `0002` each with ~3,805 merged per-cell BAMs (`split_bams/merged/`) and matching ALLCools outputs (`allcools/<chunk>_merged_fr_bam_allcools/*_allc.gz` + `.count.csv` + `.tbi`)
+
+**Status:** done
+
+**Notes:** Supersedes the seven-stage e2e entry (stages 08–09 added). Slurm `run.sbatch` generation only (cluster submit not tested). gexcb path not exercised.
+
 ## 2026-06-18 — estimated_cells force_cell_num
 
 **Task:** Add `--force-cell-num` to `estimated_cells` for top-N barcode selection by aligned_reads.
@@ -44,7 +63,7 @@
 
 **Status:** done
 
-**Notes:** Full chunk 0001 (3,805 barcodes) not run in dev (CPU-heavy). Slurm cluster submit not tested.
+**Notes:** Full-chunk real run validated in nine-stage e2e (`work/dd-met5-example`, both chunks). Slurm cluster submit not tested.
 
 ## 2026-06-18 — merge_fr_bams stage
 

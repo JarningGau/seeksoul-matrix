@@ -102,7 +102,7 @@ Implemented stages (`scripts/make_cmd.py`; contracts in `docs/developers/contrac
 
 `--stage all` generates per-stage scripts under `work/<sample>/commands/` plus a driver: `run.sh` (local) or `run.sbatch` (Slurm DAG). Barcode selection is **mutually exclusive**: `expected_cell_num` (default 3000, methylation-only path: count → estimate → split → merge → allc) or `gexcb` (RNA barcodes, split → merge → allc). Slurm emits per-chunk sbatch files for parallel stages and aggregate jobs for `estimated_cells` / `aggregate_ct_qc`.
 
-Nine-stage driver (`fastp_split` → `bam_to_allc`) script generation validated; `merge_fr_bams` and `bam_to_allc` real runs on `work/dd-met5-example` chunk `0001` (see `docs/developers/logs.md`). Slurm sbatch generation validated for all stages; cluster submit not tested in dev.
+Nine-stage driver (`fastp_split` → `bam_to_allc`) validated end-to-end via local `run.sh` on `work/dd-met5-example` (both chunks; see `docs/developers/logs.md`). Slurm sbatch generation validated for all stages; cluster submit not tested in dev.
 
 ## Coding Style & Naming Conventions
 
@@ -116,7 +116,7 @@ Follow **dbit-matrix** engineering patterns when implementing seeksoul-matrix; c
 
 ## Testing Guidelines
 
-No automated test suite yet. `fastp_split`, `demux_extract_bc`, `bismark_align`, `bam_sort`, `count_mapped_reads`, `estimated_cells`, `split_bams`, `merge_fr_bams`, and the eight-stage workflow driver (`--stage all` / `run.sh`, methylation-only path) have been manually validated (see `docs/developers/logs.md`). When adding tests, follow the template's regression style in `dbit-matrix/docs/maintenance/`. Before finishing workflow changes, run relevant CLI `--help`, `--version`, and `--dry-run` (or `pixi run fastp-dry-run` / `pixi run demux-dry-run` / `pixi run bismark-align-dry-run` / `pixi run bam-sort-dry-run` / `pixi run count-mapped-reads-dry-run` / `pixi run estimated-cells-dry-run` / `pixi run split-bams-dry-run` / `pixi run merge-fr-bams-dry-run` / `pixi run e2e-dry-run` for the workflow driver).
+No automated test suite yet. `fastp_split`, `demux_extract_bc`, `bismark_align`, `bam_sort`, `count_mapped_reads`, `estimated_cells`, `split_bams`, `merge_fr_bams`, `bam_to_allc`, and the nine-stage workflow driver (`--stage all` / `run.sh`, methylation-only path) have been manually validated (see `docs/developers/logs.md`). When adding tests, follow the template's regression style in `dbit-matrix/docs/maintenance/`. Before finishing workflow changes, run relevant CLI `--help`, `--version`, and `--dry-run` (or `pixi run fastp-dry-run` / `pixi run demux-dry-run` / `pixi run bismark-align-dry-run` / `pixi run bam-sort-dry-run` / `pixi run count-mapped-reads-dry-run` / `pixi run estimated-cells-dry-run` / `pixi run split-bams-dry-run` / `pixi run merge-fr-bams-dry-run` / `pixi run bam-to-allc-dry-run` / `pixi run e2e-dry-run` for the workflow driver).
 
 ## Lightweight Development Loop
 
