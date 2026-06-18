@@ -53,6 +53,9 @@ pixi run fastp-dry-run         # fastp_split script generation
 pixi run demux-dry-run         # demux_extract_bc script generation
 pixi run bismark-align-dry-run # bismark_align script generation
 pixi run bam-sort-dry-run      # bam_sort script generation
+pixi run count-mapped-reads-dry-run # count_mapped_reads script generation
+pixi run estimated-cells-dry-run   # estimated_cells script generation
+pixi run split-bams-dry-run        # split_bams script generation
 pixi run e2e-dry-run           # --stage all (local run.sh) dry-run
 pixi run e2e-slurm-dry-run     # --stage all (Slurm run.sbatch) dry-run
 ```
@@ -82,10 +85,13 @@ Implemented stages (`scripts/make_cmd.py`; contracts in `docs/developers/contrac
 | `demux_extract_bc` | `scripts/demux_extract_bc.py`, `scripts/aggregate_ct_qc.py` | **validated** |
 | `bismark_align` | `scripts/bismark_align.py` | **validated** |
 | `bam_sort` | `scripts/bam_sort.py` | **validated** |
+| `count_mapped_reads` | `scripts/count_mapped_reads.py` | **validated** |
+| `estimated_cells` | `scripts/estimated_cells.py` | **validated** |
+| `split_bams` | `scripts/split_bams.py` | **validated** |
 
-`--stage all` generates per-stage scripts under `work/<sample>/commands/` plus a driver: `run.sh` (local) or `run.sbatch` (Slurm DAG: fastp → parallel demux chunks → aggregate → parallel bismark per chunk → parallel bam_sort per chunk). Slurm also emits per-chunk `02_demux_extract_bc_<chunk>.sbatch`, `02_aggregate_ct_qc.sbatch`, `03_bismark_align_<chunk>.sbatch`, `04_bam_sort_<chunk>.sbatch`, and standalone `02_demux_extract_bc_submit.sh`.
+`--stage all` generates per-stage scripts under `work/<sample>/commands/` plus a driver: `run.sh` (local) or `run.sbatch` (Slurm DAG). Barcode selection is **mutually exclusive**: `expected_cell_num` (default 3000, methylation-only path: count → estimate → split) or `gexcb` (RNA barcodes, split only). Slurm emits per-chunk sbatch files for parallel stages and aggregate jobs for `estimated_cells` / `aggregate_ct_qc`.
 
-End-to-end (`fastp_split` → `demux_extract_bc`) was validated on `data/test_R1.fastq.gz` / `data/test_R2.fastq.gz` via `run.sh` (~1M reads in, 2 shards; ~339k valid reads/chunk; C→T ~0.997; 23,610 barcodes in `qc.CtoT.tsv`). `bismark_align` was validated on `work/dd-met5-example/demux/` chunk `0001` (~2 min, `--bismark-parallel 4`): forward/reverse BAMs and PE reports under `align/`; `samtools view` confirms `CB:Z:` and `UR:Z:` tags. Slurm sbatch generation was validated for all stages; cluster submit not tested in dev. Per-stage and e2e details in `docs/developers/logs.md`.
+End-to-end (`fastp_split` → `demux_extract_bc`) was validated on `data/test_R1.fastq.gz` / `data/test_R2.fastq.gz` via `run.sh` (~1M reads in, 2 shards; ~339k valid reads/chunk; C→T ~0.997; 23,610 barcodes in `qc.CtoT.tsv`). `bismark_align` was validated on `work/dd-met5-example/demux/` chunk `0001` (~2 min, `--bismark-parallel 4`): forward/reverse BAMs and PE reports under `align/`; `samtools view` confirms `CB:Z:` and `UR:Z:` tags. Step3 (`count_mapped_reads` → `estimated_cells` → `split_bams`) validated on `work/dd-met5-example` chunk `0001`: 26,128 barcodes counted, 9,225 filtered (`expected_cell_num=3000`), 9,216 forward cells with reads in `split_bams/0001.forward_1/`. Slurm sbatch generation validated for all stages; cluster submit not tested in dev. Per-stage and e2e details in `docs/developers/logs.md`.
 
 ## Coding Style & Naming Conventions
 
@@ -99,7 +105,7 @@ Follow **dbit-matrix** engineering patterns when implementing seeksoul-matrix; c
 
 ## Testing Guidelines
 
-No automated test suite yet. `fastp_split`, `demux_extract_bc`, `bismark_align`, `bam_sort`, and the four-stage workflow driver (`--stage all` / `run.sh`) have been manually validated (see `docs/developers/logs.md`). When adding tests, follow the template's regression style in `dbit-matrix/docs/maintenance/`. Before finishing workflow changes, run relevant CLI `--help`, `--version`, and `--dry-run` (or `pixi run fastp-dry-run` / `pixi run demux-dry-run` / `pixi run bismark-align-dry-run` / `pixi run bam-sort-dry-run` / `pixi run e2e-dry-run` for the workflow driver).
+No automated test suite yet. `fastp_split`, `demux_extract_bc`, `bismark_align`, `bam_sort`, `count_mapped_reads`, `estimated_cells`, `split_bams`, and the seven-stage workflow driver (`--stage all` / `run.sh`, methylation-only path) have been manually validated (see `docs/developers/logs.md`). When adding tests, follow the template's regression style in `dbit-matrix/docs/maintenance/`. Before finishing workflow changes, run relevant CLI `--help`, `--version`, and `--dry-run` (or `pixi run fastp-dry-run` / `pixi run demux-dry-run` / `pixi run bismark-align-dry-run` / `pixi run bam-sort-dry-run` / `pixi run count-mapped-reads-dry-run` / `pixi run estimated-cells-dry-run` / `pixi run split-bams-dry-run` / `pixi run e2e-dry-run` for the workflow driver).
 
 ## Lightweight Development Loop
 

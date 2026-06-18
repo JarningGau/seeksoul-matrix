@@ -4,9 +4,20 @@ Normative input/output contracts for seeksoul-matrix workflow stages.
 
 ## Main stage order (planned)
 
-`fastp_split -> demux_extract_bc -> bismark_align -> bam_sort -> ...`
+`fastp_split -> demux_extract_bc -> bismark_align -> bam_sort -> (count_mapped_reads -> estimated_cells)? -> split_bams -> ...`
 
-`fastp_split`, `demux_extract_bc`, `bismark_align`, and `bam_sort` are implemented in this repository revision.
+`fastp_split`, `demux_extract_bc`, `bismark_align`, `bam_sort`, `count_mapped_reads`, `estimated_cells`, and `split_bams` are implemented in this repository revision.
+
+### Barcode selection mode (mutually exclusive)
+
+Downstream step3 stages require a cell barcode list for `split_bams`. Configure **exactly one** of:
+
+| Mode | Workflow key | Stage path |
+|------|--------------|------------|
+| Methylation-only (default) | `expected_cell_num` (default `3000`) | `count_mapped_reads` → `estimated_cells` → `split_bams` |
+| RNA + methylation | `gexcb` (path to RNA filtered barcodes) | `split_bams` only |
+
+If neither key is set, `expected_cell_num=3000` applies. Setting both `gexcb` and `expected_cell_num` is an error.
 
 ### `fastp_split`
 
@@ -146,3 +157,72 @@ Contract:
 - Default `sort_threads=6`; unsorted source BAMs are retained.
 - If a sortbyname output exists and is newer than its input, that BAM is skipped on re-run.
 - BAM indexing, UMI dedup, and per-cell splitting are out of scope for this stage.
+
+### `count_mapped_reads` (methylation-only path only)
+
+Purpose: count aligned reads per cell barcode from unsorted Bismark BAMs (SeekSoulMethyl `COUNTS_MAPPED_READS`).
+
+Inputs:
+
+- `work/<sample>/align/<chunk>.forward_1_bismark_bt2_pe.bam`
+- `work/<sample>/align/<chunk>.reverse_1_bismark_bt2_pe.bam`
+
+Per-strand outputs under `work/<sample>/align/`:
+
+| File | Columns | Description |
+|------|---------|-------------|
+| `<chunk>.{forward,reverse}_1_bismark_bt2_pe_cb_aligned_reads_counts.csv` | `barcode`, `aligned_reads` | counts from BAM `CB:Z:` tag |
+
+Contract:
+
+- Uses unsorted BAMs (not sortbyname outputs).
+- If a counts CSV exists and is newer than its input BAM, that BAM is skipped on re-run.
+- Skipped when workflow uses `gexcb` mode.
+
+### `estimated_cells` (methylation-only path only)
+
+Purpose: merge per-chunk/strand barcode counts and filter to called cells (SeekSoulMethyl `ESTIMATED_CELLS`).
+
+Inputs:
+
+- `work/<sample>/align/*_cb_aligned_reads_counts.csv`
+
+Sample-level outputs under `work/<sample>/cells/`:
+
+| File | Description |
+|------|-------------|
+| `merged_barcode_counts.csv` | all barcodes with summed `aligned_reads` |
+| `filtered_barcode_read_counts.csv` | barcodes passing threshold (`aligned_reads`, `barcode`) |
+| `filtered_barcode` | one barcode per line |
+
+Contract:
+
+- Default `expected_cell_num=3000`; 99th-percentile index × 0.1 read threshold (aligned with SeekSoulMethyl `step3_estimated_cells.py`).
+- Skipped when workflow uses `gexcb` mode.
+
+### `split_bams`
+
+Purpose: split name-sorted Bismark BAMs into per-cell BAM files (SeekSoulMethyl `SPLIT_BAM_FILES`).
+
+Inputs:
+
+- `work/<sample>/align/<chunk>.forward_1_bismark_bt2_pe_sortbyname.bam`
+- `work/<sample>/align/<chunk>.reverse_1_bismark_bt2_pe_sortbyname.bam`
+- barcode list (**one of**):
+  - `work/<sample>/cells/filtered_barcode` (methylation-only path)
+  - `gexcb` workflow path (RNA filtered barcodes file)
+
+Per-strand outputs under `work/<sample>/split_bams/`:
+
+| File / dir | Description |
+|------------|-------------|
+| `<chunk>.forward_1/<barcode>.bam` | forward-strand single-cell BAMs |
+| `<chunk>.reverse_1/<barcode>.bam` | reverse-strand single-cell BAMs |
+| `<chunk>.{forward,reverse}_1/<chunk>.{forward,reverse}_1_filtered_barcode` | barcodes with reads > 0 |
+| `<chunk>.{forward,reverse}_1/<chunk>.{forward,reverse}_1_filtered_barcode_reads_counts.csv` | per-barcode read counts |
+
+Contract:
+
+- Input BAM must be sorted by read name; groups reads by `{CB}` prefix of QNAME (`qname.split("_")[0]`).
+- Default `split_bams_cores=8` for parallel batch splitting.
+- Forward/reverse merge, allcools, and UMI dedup are out of scope for this stage.

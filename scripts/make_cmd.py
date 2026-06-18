@@ -13,16 +13,51 @@ from pathlib import Path
 from _version import __version__
 import workflow_input_checks as wic
 
-STAGE_SEQUENCE = ["fastp_split", "demux_extract_bc", "bismark_align", "bam_sort"]
-STAGE_CHOICES = [*STAGE_SEQUENCE, "all"]
-SLURM_NEST_STAGE_KEYS = frozenset(STAGE_SEQUENCE)
+BASE_STAGE_SEQUENCE = [
+    "fastp_split",
+    "demux_extract_bc",
+    "bismark_align",
+    "bam_sort",
+]
+POST_BAM_SORT_METHY_ONLY = [
+    "count_mapped_reads",
+    "estimated_cells",
+    "split_bams",
+]
+POST_BAM_SORT_GEXCB = ["split_bams"]
+ALL_STAGE_NAMES = [*BASE_STAGE_SEQUENCE, *POST_BAM_SORT_METHY_ONLY]
+STAGE_CHOICES = [*ALL_STAGE_NAMES, "all"]
+SLURM_NEST_STAGE_KEYS = frozenset(ALL_STAGE_NAMES)
 STAGE_REQUIRED_FIELDS = {
     "fastp_split": ["r1", "r2", "number_of_split_parts"],
     "demux_extract_bc": ["barcode_whitelist"],
     "bismark_align": ["bismark_ref"],
     "bam_sort": [],
+    "count_mapped_reads": [],
+    "estimated_cells": [],
+    "split_bams": [],
 }
 DEFAULT_BARCODE_WHITELIST = "whitelist/DD-MET5/U3CB_methylation.txt.gz"
+DEFAULT_EXPECTED_CELL_NUM = 3000
+
+
+def build_stage_sequence(settings: dict) -> list[str]:
+    mode = settings.get("_barcode_mode") or wic.resolve_barcode_mode(settings)
+    if mode == "gexcb":
+        return [*BASE_STAGE_SEQUENCE, *POST_BAM_SORT_GEXCB]
+    return [*BASE_STAGE_SEQUENCE, *POST_BAM_SORT_METHY_ONLY]
+
+
+def stage_prefix_map(stage_sequence: list[str]) -> dict[str, str]:
+    return {name: f"{index + 1:02d}" for index, name in enumerate(stage_sequence)}
+
+
+def stage_script_name(
+    settings: dict, stage_name: str, *, suffix: str = "sh", chunk_id: str = ""
+) -> str:
+    prefix = stage_prefix_map(build_stage_sequence(settings))[stage_name]
+    chunk_part = f"_{chunk_id}" if chunk_id else ""
+    return f"{prefix}_{stage_name}{chunk_part}.{suffix}"
 
 
 def resolve_env_executable(name: str) -> str:
@@ -135,6 +170,26 @@ def parse_args() -> argparse.Namespace:
             "samtools executable path or command name. "
             "Default: samtools from current Python env if available, else samtools."
         ),
+    )
+    parser.add_argument(
+        "--gexcb",
+        help=(
+            "RNA filtered barcodes for split_bams (mutually exclusive with "
+            "--expected-cell-num)."
+        ),
+    )
+    parser.add_argument(
+        "--expected-cell-num",
+        type=int,
+        help=(
+            "Expected cell count for estimated_cells threshold. Default: 3000. "
+            "Mutually exclusive with --gexcb."
+        ),
+    )
+    parser.add_argument(
+        "--split-bams-cores",
+        type=int,
+        help="CPU cores for split_bams parallel batches. Default: 8.",
     )
     parser.add_argument(
         "--submit",
@@ -333,6 +388,91 @@ def build_bam_sort_chunk_command(
     )
 
 
+def build_count_mapped_reads_work_command(sample_work: Path) -> str:
+    return quoted(
+        [
+            sys.executable,
+            "scripts/count_mapped_reads.py",
+            "--work-path",
+            str(sample_work),
+        ]
+    )
+
+
+def build_count_mapped_reads_chunk_command(sample_work: Path, chunk_id: str) -> str:
+    return quoted(
+        [
+            sys.executable,
+            "scripts/count_mapped_reads.py",
+            "--work-path",
+            str(sample_work),
+            "--chunk-id",
+            chunk_id,
+        ]
+    )
+
+
+def build_estimated_cells_command(sample_work: Path, expected_cell_num: int) -> str:
+    return quoted(
+        [
+            sys.executable,
+            "scripts/estimated_cells.py",
+            "--work-path",
+            str(sample_work),
+            "--expected-cell-num",
+            str(expected_cell_num),
+        ]
+    )
+
+
+def build_split_bams_work_command(args: argparse.Namespace, sample_work: Path) -> str:
+    command = [
+        sys.executable,
+        "scripts/split_bams.py",
+        "--work-path",
+        str(sample_work),
+        "--cores",
+        str(args.split_bams_cores),
+    ]
+    if args.gexcb:
+        command.extend(["--gexcb", args.gexcb])
+    else:
+        command.extend(
+            [
+                "--filtered-barcode",
+                str(sample_work / "cells" / "filtered_barcode"),
+            ]
+        )
+    return quoted(command)
+
+
+def build_split_bams_chunk_command(
+    args: argparse.Namespace,
+    sample_work: Path,
+    chunk_id: str,
+) -> str:
+    command = [
+        sys.executable,
+        "scripts/split_bams.py",
+        "--work-path",
+        str(sample_work),
+        "--chunk-id",
+        chunk_id,
+        "--cores",
+        str(args.split_bams_cores),
+    ]
+    if args.gexcb:
+        command.extend(["--gexcb", args.gexcb])
+    else:
+        command.extend(
+            [
+                "--filtered-barcode",
+                str(sample_work / "cells" / "filtered_barcode"),
+            ]
+        )
+    return quoted(command)
+
+
 def build_demux_chunks_from_config(
     sample_work: Path, number_of_split_parts: int
 ) -> list[tuple[str, Path, Path, Path]]:
@@ -488,6 +628,35 @@ def validate_inputs_for_stage(
         for _chunk_id, fwd_bam, rev_bam in chunks:
             wic.require_file(f"align/{fwd_bam.name}", fwd_bam)
             wic.require_file(f"align/{rev_bam.name}", rev_bam)
+    elif stage == "count_mapped_reads":
+        align_dir = sample_work / "align"
+        chunks = wic.discover_bismark_pe_bams(align_dir)
+        if not chunks:
+            raise ValueError(f"no unsorted Bismark PE BAMs found under {align_dir}")
+        for _chunk_id, fwd_bam, rev_bam in chunks:
+            wic.require_file(f"align/{fwd_bam.name}", fwd_bam)
+            wic.require_file(f"align/{rev_bam.name}", rev_bam)
+    elif stage == "estimated_cells":
+        align_dir = sample_work / "align"
+        count_files = list(align_dir.glob("*_cb_aligned_reads_counts.csv"))
+        if not count_files:
+            raise ValueError(
+                f"no *_cb_aligned_reads_counts.csv files found under {align_dir}"
+            )
+    elif stage == "split_bams":
+        align_dir = sample_work / "align"
+        chunks = wic.discover_bismark_sortbyname_bams(align_dir)
+        if not chunks:
+            raise ValueError(f"no sortbyname Bismark PE BAMs found under {align_dir}")
+        for _chunk_id, fwd_bam, rev_bam in chunks:
+            wic.require_file(f"align/{fwd_bam.name}", fwd_bam)
+            wic.require_file(f"align/{rev_bam.name}", rev_bam)
+        mode = settings.get("_barcode_mode") or wic.resolve_barcode_mode(settings)
+        if mode == "gexcb":
+            wic.require_file("gexcb", wic.resolve_config_path(settings["gexcb"]))
+        else:
+            filtered_barcode = sample_work / "cells" / "filtered_barcode"
+            wic.require_file("cells/filtered_barcode", filtered_barcode)
     else:
         raise ValueError(f"unsupported stage for input validation: {stage}")
 
@@ -546,6 +715,9 @@ def resolve_settings(args: argparse.Namespace) -> dict:
         "bismark_bin": pick(args.bismark_bin, cfg.get("bismark_bin")),
         "sort_threads": pick(args.sort_threads, cfg.get("sort_threads")),
         "samtools_bin": pick(args.samtools_bin, cfg.get("samtools_bin")),
+        "gexcb": pick(args.gexcb, cfg.get("gexcb")),
+        "expected_cell_num": pick(args.expected_cell_num, cfg.get("expected_cell_num")),
+        "split_bams_cores": pick(args.split_bams_cores, cfg.get("split_bams_cores")),
         "slurm_partition": pick(args.slurm_partition, stage_slurm_cfg.get("partition")),
         "slurm_mem": pick(args.slurm_mem, stage_slurm_cfg.get("mem")),
         "slurm_cpus_per_task": pick(
@@ -587,6 +759,18 @@ def resolve_settings(args: argparse.Namespace) -> dict:
         settings["samtools_bin"] = normalize_executable_setting(
             settings["samtools_bin"], "samtools"
         )
+    settings["_barcode_mode"] = wic.resolve_barcode_mode(settings)
+    if settings["_barcode_mode"] == "expected_cell_num":
+        if settings["expected_cell_num"] is None:
+            settings["expected_cell_num"] = DEFAULT_EXPECTED_CELL_NUM
+        settings["expected_cell_num"] = int(settings["expected_cell_num"])
+    if stage in ("split_bams", "all") or settings["_barcode_mode"] == "gexcb":
+        settings["split_bams_cores"] = int(settings["split_bams_cores"] or 8)
+    settings["_stage_sequence"] = build_stage_sequence(settings)
+    if stage in ("count_mapped_reads", "estimated_cells") and settings["_barcode_mode"] == "gexcb":
+        raise ValueError(
+            f"stage {stage} is not used when gexcb is set; use split_bams with --gexcb"
+        )
     settings["slurm_partition"] = settings["slurm_partition"] or "cpu"
     settings["slurm_mem"] = settings["slurm_mem"] or "16G"
     settings["slurm_cpus_per_task"] = settings["slurm_cpus_per_task"] or 8
@@ -604,7 +788,7 @@ def resolve_settings(args: argparse.Namespace) -> dict:
     )
 
     if stage == "all":
-        for stage_name in STAGE_SEQUENCE:
+        for stage_name in settings["_stage_sequence"]:
             validate_required_for_stage(stage_name, settings)
     else:
         validate_required_for_stage(stage, settings)
@@ -694,8 +878,13 @@ def build_stage_passthrough_args(argv: list[str]) -> list[str]:
 
 
 def driver_scripts_for_stage(
-    stage_name: str, scripts: list[Path], *, runner: str
+    stage_name: str,
+    scripts: list[Path],
+    *,
+    runner: str,
+    stage_sequence: list[str],
 ) -> list[Path]:
+    prefix = stage_prefix_map(stage_sequence)[stage_name]
     if stage_name == "demux_extract_bc":
         if runner == "local":
             return [script for script in scripts if script.name == "02_demux_extract_bc.sh"]
@@ -718,11 +907,45 @@ def driver_scripts_for_stage(
             if script.name.startswith("04_bam_sort_")
             and script.suffix == ".sbatch"
         ]
+    if stage_name == "count_mapped_reads":
+        if runner == "local":
+            return [
+                script
+                for script in scripts
+                if script.name == f"{prefix}_count_mapped_reads.sh"
+            ]
+        return [
+            script
+            for script in scripts
+            if script.name.startswith(f"{prefix}_count_mapped_reads_")
+            and script.suffix == ".sbatch"
+        ]
+    if stage_name == "estimated_cells":
+        return [
+            script
+            for script in scripts
+            if script.name.startswith(f"{prefix}_estimated_cells")
+        ]
+    if stage_name == "split_bams":
+        if runner == "local":
+            return [
+                script
+                for script in scripts
+                if script.name == f"{prefix}_split_bams.sh"
+            ]
+        return [
+            script
+            for script in scripts
+            if script.name.startswith(f"{prefix}_split_bams_")
+            and script.suffix == ".sbatch"
+        ]
     return scripts
 
 
 def generate_local_driver_script(
-    stage_scripts: list[tuple[str, list[Path]]], output_path: Path
+    stage_scripts: list[tuple[str, list[Path]]],
+    output_path: Path,
+    stage_sequence: list[str],
 ) -> None:
     lines = [
         "#!/usr/bin/env bash",
@@ -732,7 +955,9 @@ def generate_local_driver_script(
         "",
     ]
     for stage_name, scripts in stage_scripts:
-        runnable = driver_scripts_for_stage(stage_name, scripts, runner="local")
+        runnable = driver_scripts_for_stage(
+            stage_name, scripts, runner="local", stage_sequence=stage_sequence
+        )
         if not runnable:
             continue
         for script_path in runnable:
@@ -748,6 +973,7 @@ def generate_slurm_driver_script(
     log_dir: Path,
     settings: dict,
 ) -> None:
+    stage_sequence = settings["_stage_sequence"]
     lines = [
         "submit_with_dep() {",
         '  local script_path="$1"',
@@ -782,7 +1008,9 @@ def generate_slurm_driver_script(
         "",
     ]
     for stage_name, scripts in stage_scripts:
-        runnable = driver_scripts_for_stage(stage_name, scripts, runner="slurm")
+        runnable = driver_scripts_for_stage(
+            stage_name, scripts, runner="slurm", stage_sequence=stage_sequence
+        )
         if not runnable:
             continue
         lines.append(f'echo "[run.sbatch] stage={stage_name}"')
@@ -867,7 +1095,8 @@ def main() -> int:
         )
 
     if settings["stage"] == "all":
-        for stage_name in STAGE_SEQUENCE:
+        stage_sequence = settings["_stage_sequence"]
+        for stage_name in stage_sequence:
             validate_inputs_for_stage(
                 stage_name,
                 settings,
@@ -876,7 +1105,7 @@ def main() -> int:
             )
         passthrough_args = build_stage_passthrough_args(sys.argv[1:])
         stage_scripts: list[tuple[str, list[Path]]] = []
-        for stage_name in STAGE_SEQUENCE:
+        for stage_name in stage_sequence:
             stage_argv = [
                 sys.executable,
                 __file__,
@@ -905,13 +1134,13 @@ def main() -> int:
             driver_path = command_dir / "run.sh"
             print(f"[make_cmd] script={driver_path}")
             if not settings["dry_run"]:
-                generate_local_driver_script(stage_scripts, driver_path)
+                generate_local_driver_script(stage_scripts, driver_path, stage_sequence)
         else:
             driver_path = command_dir / "run.sbatch"
             print(f"[make_cmd] script={driver_path}")
             if not settings["dry_run"]:
                 driver_settings = apply_stage_slurm_settings(
-                    settings, STAGE_SEQUENCE[-1]
+                    settings, stage_sequence[-1]
                 )
                 generate_slurm_driver_script(
                     stage_scripts, driver_path, log_dir, driver_settings
@@ -1162,6 +1391,146 @@ def main() -> int:
                 if not settings["dry_run"]:
                     slurm_args = argparse.Namespace(
                         job_name=f"seeksoul_bamsort_{settings['sample_id']}_{chunk_id}",
+                        slurm_partition=settings["slurm_partition"],
+                        slurm_mem=settings["slurm_mem"],
+                        slurm_cpus_per_task=settings["slurm_cpus_per_task"],
+                        slurm_output=chunk_output,
+                        slurm_error=chunk_error,
+                    )
+                    generate_slurm_script(command, script_path, log_dir, slurm_args)
+                generated_scripts.append(script_path)
+    elif settings["stage"] == "count_mapped_reads":
+        script_name = stage_script_name(settings, "count_mapped_reads")
+        if settings["runner"] == "local":
+            script_path = command_dir / script_name
+            command = build_count_mapped_reads_work_command(sample_work)
+            print(f"[make_cmd] runner={settings['runner']}")
+            print(f"[make_cmd] stage={settings['stage']}")
+            print(f"[make_cmd] sample_id={settings['sample_id']}")
+            print(f"[make_cmd] script={script_path}")
+            print(f"[make_cmd] command={command}")
+            if settings["dry_run"]:
+                return 0
+            generate_local_script(command, script_path)
+            generated_scripts.append(script_path)
+        else:
+            chunks = discover_bam_sort_chunks(sample_work)
+            if not chunks:
+                raise ValueError(
+                    "no unsorted Bismark PE BAMs found for count_mapped_reads script generation"
+                )
+            print(f"[make_cmd] runner={settings['runner']}")
+            print(f"[make_cmd] stage={settings['stage']}")
+            print(f"[make_cmd] sample_id={settings['sample_id']}")
+            print(f"[make_cmd] chunk_count={len(chunks)}")
+            for chunk_id, _forward_bam, _reverse_bam in chunks:
+                base_name = stage_script_name(
+                    settings, "count_mapped_reads", suffix="sbatch", chunk_id=chunk_id
+                ).removesuffix(".sbatch")
+                script_path = command_dir / f"{base_name}.sbatch"
+                command = build_count_mapped_reads_chunk_command(sample_work, chunk_id)
+                chunk_output = settings["slurm_output"].replace(
+                    "%x",
+                    f"seeksoul_count_{settings['sample_id']}_{chunk_id}",
+                )
+                chunk_error = settings["slurm_error"].replace(
+                    "%x",
+                    f"seeksoul_count_{settings['sample_id']}_{chunk_id}",
+                )
+                print(f"[make_cmd] script={script_path}")
+                print(f"[make_cmd] command={command}")
+                if not settings["dry_run"]:
+                    slurm_args = argparse.Namespace(
+                        job_name=f"seeksoul_count_{settings['sample_id']}_{chunk_id}",
+                        slurm_partition=settings["slurm_partition"],
+                        slurm_mem=settings["slurm_mem"],
+                        slurm_cpus_per_task=settings["slurm_cpus_per_task"],
+                        slurm_output=chunk_output,
+                        slurm_error=chunk_error,
+                    )
+                    generate_slurm_script(command, script_path, log_dir, slurm_args)
+                generated_scripts.append(script_path)
+    elif settings["stage"] == "estimated_cells":
+        script_name = stage_script_name(settings, "estimated_cells")
+        command = build_estimated_cells_command(
+            sample_work, settings["expected_cell_num"]
+        )
+        if settings["runner"] == "local":
+            script_path = command_dir / script_name
+        else:
+            script_path = command_dir / script_name.replace(".sh", ".sbatch")
+        print(f"[make_cmd] runner={settings['runner']}")
+        print(f"[make_cmd] stage={settings['stage']}")
+        print(f"[make_cmd] sample_id={settings['sample_id']}")
+        print(f"[make_cmd] script={script_path}")
+        print(f"[make_cmd] command={command}")
+        if settings["dry_run"]:
+            return 0
+        if settings["runner"] == "local":
+            generate_local_script(command, script_path)
+        else:
+            slurm_args = argparse.Namespace(
+                job_name=f"seeksoul_estcells_{settings['sample_id']}",
+                slurm_partition=settings["slurm_partition"],
+                slurm_mem=settings["slurm_mem"],
+                slurm_cpus_per_task=settings["slurm_cpus_per_task"],
+                slurm_output=settings["slurm_output"].replace(
+                    "%x", f"seeksoul_estcells_{settings['sample_id']}"
+                ),
+                slurm_error=settings["slurm_error"].replace(
+                    "%x", f"seeksoul_estcells_{settings['sample_id']}"
+                ),
+            )
+            generate_slurm_script(command, script_path, log_dir, slurm_args)
+        generated_scripts.append(script_path)
+    elif settings["stage"] == "split_bams":
+        command_args = argparse.Namespace(
+            gexcb=settings.get("gexcb"),
+            split_bams_cores=settings["split_bams_cores"],
+        )
+        if settings["runner"] == "local":
+            script_path = command_dir / stage_script_name(settings, "split_bams")
+            command = build_split_bams_work_command(command_args, sample_work)
+            print(f"[make_cmd] runner={settings['runner']}")
+            print(f"[make_cmd] stage={settings['stage']}")
+            print(f"[make_cmd] sample_id={settings['sample_id']}")
+            print(f"[make_cmd] script={script_path}")
+            print(f"[make_cmd] command={command}")
+            if settings["dry_run"]:
+                return 0
+            generate_local_script(command, script_path)
+            generated_scripts.append(script_path)
+        else:
+            chunks = wic.discover_bismark_sortbyname_bams(sample_work / "align")
+            if not chunks:
+                raise ValueError(
+                    "no sortbyname Bismark PE BAMs found for split_bams script generation"
+                )
+            print(f"[make_cmd] runner={settings['runner']}")
+            print(f"[make_cmd] stage={settings['stage']}")
+            print(f"[make_cmd] sample_id={settings['sample_id']}")
+            print(f"[make_cmd] chunk_count={len(chunks)}")
+            for chunk_id, _forward_bam, _reverse_bam in chunks:
+                base_name = stage_script_name(
+                    settings, "split_bams", suffix="sbatch", chunk_id=chunk_id
+                ).removesuffix(".sbatch")
+                script_path = command_dir / f"{base_name}.sbatch"
+                command = build_split_bams_chunk_command(
+                    command_args, sample_work, chunk_id
+                )
+                chunk_output = settings["slurm_output"].replace(
+                    "%x",
+                    f"seeksoul_split_{settings['sample_id']}_{chunk_id}",
+                )
+                chunk_error = settings["slurm_error"].replace(
+                    "%x",
+                    f"seeksoul_split_{settings['sample_id']}_{chunk_id}",
+                )
+                print(f"[make_cmd] script={script_path}")
+                print(f"[make_cmd] command={command}")
+                if not settings["dry_run"]:
+                    slurm_args = argparse.Namespace(
+                        job_name=f"seeksoul_split_{settings['sample_id']}_{chunk_id}",
                         slurm_partition=settings["slurm_partition"],
                         slurm_mem=settings["slurm_mem"],
                         slurm_cpus_per_task=settings["slurm_cpus_per_task"],

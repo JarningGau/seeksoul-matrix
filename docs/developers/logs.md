@@ -1,5 +1,31 @@
 # Development log
 
+## 2026-06-18 — step3 count / estimate / split (methylation-only + gexcb)
+
+**Task:** Implement `count_mapped_reads`, `estimated_cells`, and `split_bams` stages with mutually exclusive `expected_cell_num` (default 3000) vs `gexcb` barcode modes.
+
+**Files changed:**
+- `scripts/count_mapped_reads.py`, `scripts/estimated_cells.py`, `scripts/split_bams.py`
+- `scripts/make_cmd.py`, `scripts/workflow_input_checks.py`
+- `workflow/dd_met5_test.json`, `pixi.toml`, `pixi.lock`
+- `docs/developers/contracts.md`, `AGENTS.md`
+
+**Summary:**
+- Methylation-only path: unsorted BAM CB-tag counts → 99th-percentile cell filter → name-sorted BAM split by barcode (`split_bams/<chunk>.{forward,reverse}_1/<CB>.bam`).
+- RNA path: `gexcb` skips count/estimate; `split_bams` uses RNA barcodes directly.
+- `make_cmd` dynamic stage sequence (5–7 stages); script prefixes `05`/`06`/`07` or `05` for gexcb-only split.
+- Added `pysam`; pixi dry-run helpers for new stages.
+
+**Checks performed:**
+- `pixi install`
+- `--help` and `--dry-run` on three new scripts and `e2e-dry-run`
+- Mutual exclusion: `--gexcb` + workflow `expected_cell_num` raises error
+- Real run on `work/dd-met5-example` chunk `0001`: 26,128 barcodes counted; 9,225 filtered; 9,216 forward cells with reads; `samtools view` confirms `CB:Z:` in split BAM
+
+**Status:** done
+
+**Notes:** `merge_fr_bams` / allcools not in scope. gexcb real-data run not tested (no RNA barcodes in dev). Reverse-strand split ~9 min for chunk 0001 with 9k barcodes.
+
 ## 2026-06-17 — bam_sort stage
 
 **Task:** Implement `bam_sort` stage (samtools name-sort of Bismark PE BAMs); wire into `make_cmd.py` and `--stage all`.

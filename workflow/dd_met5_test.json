@@ -18,6 +18,8 @@
     "bismark_bin": "bismark",
     "sort_threads": 6,
     "samtools_bin": "samtools",
+    "expected_cell_num": 10,
+    "split_bams_cores": 8,
     "slurm": {
         "fastp_split": {
             "partition": "amd-ep2",
@@ -37,6 +39,21 @@
         "bam_sort": {
             "partition": "amd-ep2",
             "mem": "16G",
+            "cpus_per_task": 8
+        },
+        "count_mapped_reads": {
+            "partition": "amd-ep2",
+            "mem": "16G",
+            "cpus_per_task": 8
+        },
+        "estimated_cells": {
+            "partition": "amd-ep2",
+            "mem": "8G",
+            "cpus_per_task": 4
+        },
+        "split_bams": {
+            "partition": "amd-ep2",
+            "mem": "32G",
             "cpus_per_task": 8
         }
     }

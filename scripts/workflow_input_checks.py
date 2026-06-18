@@ -129,6 +129,47 @@ def discover_bismark_pe_bams(
     return chunks
 
 
+def discover_bismark_sortbyname_bams(
+    align_dir: Path,
+) -> list[tuple[str, Path, Path]]:
+    """Return sorted (chunk_id, forward_sortbyname_bam, reverse_sortbyname_bam)."""
+    align_dir = Path(align_dir)
+    if not align_dir.is_dir():
+        return []
+
+    chunks: list[tuple[str, Path, Path]] = []
+    for fwd_bam in sorted(align_dir.glob("*.forward_1_bismark_bt2_pe_sortbyname.bam")):
+        chunk_id = fwd_bam.name[: -len(".forward_1_bismark_bt2_pe_sortbyname.bam")]
+        rev_bam = align_dir / f"{chunk_id}.reverse_1_bismark_bt2_pe_sortbyname.bam"
+        chunks.append((chunk_id, fwd_bam, rev_bam))
+    return chunks
+
+
+def counts_output_path(bam_path: Path) -> Path:
+    """Map unsorted BAM to per-barcode counts CSV path."""
+    return bam_path.parent / f"{bam_path.stem}_cb_aligned_reads_counts.csv"
+
+
+def split_bams_strand_dir(split_root: Path, sortbyname_bam: Path) -> Path:
+    """Directory name for one strand's split BAM outputs."""
+    stem = sortbyname_bam.name[: -len(".bam")] if sortbyname_bam.name.endswith(".bam") else sortbyname_bam.name
+    prefix = re.sub(r"_bismark_.*", "", stem)
+    return split_root / prefix
+
+
+def resolve_barcode_mode(settings: dict) -> str:
+    """Return 'gexcb' or 'expected_cell_num' (mutually exclusive)."""
+    gexcb = settings.get("gexcb")
+    expected_cell_num = settings.get("expected_cell_num")
+    has_gexcb = gexcb not in (None, "")
+    has_expected = expected_cell_num is not None
+    if has_gexcb and has_expected:
+        raise ValueError("gexcb and expected_cell_num are mutually exclusive")
+    if has_gexcb:
+        return "gexcb"
+    return "expected_cell_num"
+
+
 def require_bismark_ref(path: Path) -> None:
     ref = Path(path)
     if not ref.is_dir():
