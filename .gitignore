@@ -5,8 +5,8 @@
 data/*
 work/*
 
-dbit-matrix/*
-SeekSoulMethyl/*
+dbit-matrix/
+SeekSoulMethyl/
 
 __pycache__
 

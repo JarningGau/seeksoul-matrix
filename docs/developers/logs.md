@@ -1,5 +1,23 @@
 # Development log
 
+## 2026-06-23 — Slurm upfront chunk planning for `--stage all`
+
+**Task:** Fix `ValueError: no demux align inputs found for bismark script generation` when running fresh HPC `--stage all --submit` before prior-stage outputs exist.
+
+**Files changed:**
+- `scripts/workflow_input_checks.py`, `scripts/make_cmd.py`
+- `docs/developers/logs.md`
+
+**Summary:**
+- Added `plan_*` helpers for demux FASTQs, Bismark BAMs, split/merge dirs (mirrors existing `plan_fastp_shards` / demux Slurm pattern).
+- Slurm per-chunk script generation now discovers existing outputs when present, otherwise falls back to `--number-of-split-parts` for upfront DAG generation (`bismark_align` through `bam_to_allc`).
+
+**Checks performed:**
+- `pixi run python scripts/make_cmd.py --workflow-config workflow/dd_met5_test.json --stage all --runner slurm --dry-run --number-of-split-parts 2 --sample-id test-fresh` (empty work dir; all nine stages)
+- `pixi run e2e-slurm-dry-run` (existing `work/dd-met5-example` discovery path)
+
+**Status:** done
+
 ## 2026-06-23 — pin seekgene/ALLCools install commit
 
 **Task:** Pin seekgene/ALLCools install commit for reproducible `setup-allcools` (mirror Bismark install script).

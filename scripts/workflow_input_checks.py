@@ -98,6 +98,83 @@ def plan_fastp_shards(shard_dir: Path, number_of_split_parts: int) -> list[tuple
     ]
 
 
+def plan_demux_align_chunks(
+    demux_dir: Path, number_of_split_parts: int
+) -> list[tuple[str, Path, Path, Path, Path]]:
+    """Return expected demux FASTQ paths when demux outputs are not present yet."""
+    demux_dir = Path(demux_dir)
+    return [
+        (
+            chunk_id,
+            demux_dir / f"{chunk_id}.forward_1.fq.gz",
+            demux_dir / f"{chunk_id}.forward_2.fq.gz",
+            demux_dir / f"{chunk_id}.reverse_1.fq.gz",
+            demux_dir / f"{chunk_id}.reverse_2.fq.gz",
+        )
+        for chunk_id in build_chunk_names(number_of_split_parts)
+    ]
+
+
+def plan_bismark_pe_bams(
+    align_dir: Path, number_of_split_parts: int
+) -> list[tuple[str, Path, Path]]:
+    """Return expected unsorted Bismark PE BAM paths before alignment completes."""
+    align_dir = Path(align_dir)
+    return [
+        (
+            chunk_id,
+            align_dir / f"{chunk_id}.forward_1_bismark_bt2_pe.bam",
+            align_dir / f"{chunk_id}.reverse_1_bismark_bt2_pe.bam",
+        )
+        for chunk_id in build_chunk_names(number_of_split_parts)
+    ]
+
+
+def plan_bismark_sortbyname_bams(
+    align_dir: Path, number_of_split_parts: int
+) -> list[tuple[str, Path, Path]]:
+    """Return expected sortbyname Bismark PE BAM paths before bam_sort completes."""
+    align_dir = Path(align_dir)
+    return [
+        (
+            chunk_id,
+            align_dir / f"{chunk_id}.forward_1_bismark_bt2_pe_sortbyname.bam",
+            align_dir / f"{chunk_id}.reverse_1_bismark_bt2_pe_sortbyname.bam",
+        )
+        for chunk_id in build_chunk_names(number_of_split_parts)
+    ]
+
+
+def plan_split_bam_chunk_pairs(
+    split_root: Path, number_of_split_parts: int
+) -> list[tuple[str, Path, Path]]:
+    """Return expected split BAM strand dirs before split_bams completes."""
+    split_root = Path(split_root)
+    return [
+        (
+            chunk_id,
+            split_root / f"{chunk_id}.forward_1",
+            split_root / f"{chunk_id}.reverse_1",
+        )
+        for chunk_id in build_chunk_names(number_of_split_parts)
+    ]
+
+
+def plan_merged_fr_bam_chunks(
+    merged_root: Path, number_of_split_parts: int
+) -> list[tuple[str, Path, Path]]:
+    """Return expected merged FR BAM dirs before merge_fr_bams completes."""
+    merged_root = Path(merged_root)
+    return [
+        (
+            chunk_id,
+            merged_root / f"{chunk_id}_merged_fr_bam",
+            merged_root / f"{chunk_id}_merge_filtered_barcode",
+        )
+        for chunk_id in build_chunk_names(number_of_split_parts)
+    ]
+
+
 def discover_demux_align_chunks(
     demux_dir: Path,
 ) -> list[tuple[str, Path, Path, Path, Path]]:

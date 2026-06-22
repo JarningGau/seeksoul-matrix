@@ -386,6 +386,23 @@ def discover_bam_sort_chunks(sample_work: Path) -> list[tuple[str, Path, Path]]:
     return wic.discover_bismark_pe_bams(sample_work / "align")
 
 
+def resolve_slurm_chunks(
+    *,
+    discover: callable,
+    plan: callable,
+    number_of_split_parts: int | None,
+    label: str,
+) -> list:
+    chunks = discover()
+    if chunks:
+        return chunks
+    if number_of_split_parts is None:
+        raise ValueError(
+            f"no {label} found; pass --number-of-split-parts for upfront Slurm script generation"
+        )
+    return plan(number_of_split_parts)
+
+
 def build_bam_sort_work_command(args: argparse.Namespace, sample_work: Path) -> str:
     return quoted(
         [
@@ -1530,9 +1547,12 @@ def main() -> int:
             generate_local_script(command, script_path)
             generated_scripts.append(script_path)
         else:
-            chunks = discover_bismark_align_chunks(sample_work)
-            if not chunks:
-                raise ValueError("no demux align inputs found for bismark script generation")
+            chunks = resolve_slurm_chunks(
+                discover=lambda: discover_bismark_align_chunks(sample_work),
+                plan=lambda n: wic.plan_demux_align_chunks(sample_work / "demux", n),
+                number_of_split_parts=settings.get("number_of_split_parts"),
+                label="demux align inputs",
+            )
             print(f"[make_cmd] runner={settings['runner']}")
             print(f"[make_cmd] stage={settings['stage']}")
             print(f"[make_cmd] sample_id={settings['sample_id']}")
@@ -1586,9 +1606,12 @@ def main() -> int:
             generate_local_script(command, script_path)
             generated_scripts.append(script_path)
         else:
-            chunks = discover_bam_sort_chunks(sample_work)
-            if not chunks:
-                raise ValueError("no Bismark PE BAMs found for bam_sort script generation")
+            chunks = resolve_slurm_chunks(
+                discover=lambda: discover_bam_sort_chunks(sample_work),
+                plan=lambda n: wic.plan_bismark_pe_bams(sample_work / "align", n),
+                number_of_split_parts=settings.get("number_of_split_parts"),
+                label="Bismark PE BAMs",
+            )
             print(f"[make_cmd] runner={settings['runner']}")
             print(f"[make_cmd] stage={settings['stage']}")
             print(f"[make_cmd] sample_id={settings['sample_id']}")
@@ -1637,11 +1660,12 @@ def main() -> int:
             generate_local_script(command, script_path)
             generated_scripts.append(script_path)
         else:
-            chunks = discover_bam_sort_chunks(sample_work)
-            if not chunks:
-                raise ValueError(
-                    "no unsorted Bismark PE BAMs found for count_mapped_reads script generation"
-                )
+            chunks = resolve_slurm_chunks(
+                discover=lambda: discover_bam_sort_chunks(sample_work),
+                plan=lambda n: wic.plan_bismark_pe_bams(sample_work / "align", n),
+                number_of_split_parts=settings.get("number_of_split_parts"),
+                label="unsorted Bismark PE BAMs",
+            )
             print(f"[make_cmd] runner={settings['runner']}")
             print(f"[make_cmd] stage={settings['stage']}")
             print(f"[make_cmd] sample_id={settings['sample_id']}")
@@ -1726,11 +1750,12 @@ def main() -> int:
             generate_local_script(command, script_path)
             generated_scripts.append(script_path)
         else:
-            chunks = wic.discover_bismark_sortbyname_bams(sample_work / "align")
-            if not chunks:
-                raise ValueError(
-                    "no sortbyname Bismark PE BAMs found for split_bams script generation"
-                )
+            chunks = resolve_slurm_chunks(
+                discover=lambda: wic.discover_bismark_sortbyname_bams(sample_work / "align"),
+                plan=lambda n: wic.plan_bismark_sortbyname_bams(sample_work / "align", n),
+                number_of_split_parts=settings.get("number_of_split_parts"),
+                label="sortbyname Bismark PE BAMs",
+            )
             print(f"[make_cmd] runner={settings['runner']}")
             print(f"[make_cmd] stage={settings['stage']}")
             print(f"[make_cmd] sample_id={settings['sample_id']}")
@@ -1782,11 +1807,12 @@ def main() -> int:
             generate_local_script(command, script_path)
             generated_scripts.append(script_path)
         else:
-            pairs = wic.discover_split_bam_chunk_pairs(sample_work / "split_bams")
-            if not pairs:
-                raise ValueError(
-                    "no split BAM chunk pairs found for merge_fr_bams script generation"
-                )
+            pairs = resolve_slurm_chunks(
+                discover=lambda: wic.discover_split_bam_chunk_pairs(sample_work / "split_bams"),
+                plan=lambda n: wic.plan_split_bam_chunk_pairs(sample_work / "split_bams", n),
+                number_of_split_parts=settings.get("number_of_split_parts"),
+                label="split BAM chunk pairs",
+            )
             print(f"[make_cmd] runner={settings['runner']}")
             print(f"[make_cmd] stage={settings['stage']}")
             print(f"[make_cmd] sample_id={settings['sample_id']}")
@@ -1842,13 +1868,16 @@ def main() -> int:
             generate_local_script(command, script_path)
             generated_scripts.append(script_path)
         else:
-            chunks = wic.discover_merged_fr_bam_chunks(
-                sample_work / "split_bams" / "merged"
+            chunks = resolve_slurm_chunks(
+                discover=lambda: wic.discover_merged_fr_bam_chunks(
+                    sample_work / "split_bams" / "merged"
+                ),
+                plan=lambda n: wic.plan_merged_fr_bam_chunks(
+                    sample_work / "split_bams" / "merged", n
+                ),
+                number_of_split_parts=settings.get("number_of_split_parts"),
+                label="merged FR BAM chunks",
             )
-            if not chunks:
-                raise ValueError(
-                    "no merged FR BAM chunks found for bam_to_allc script generation"
-                )
             print(f"[make_cmd] runner={settings['runner']}")
             print(f"[make_cmd] stage={settings['stage']}")
             print(f"[make_cmd] sample_id={settings['sample_id']}")
