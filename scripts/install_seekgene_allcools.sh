@@ -2,8 +2,8 @@
 # Install seekgene/ALLCools into the active pixi/conda environment.
 set -euo pipefail
 
+SEEKGENE_ALLCOOLS_COMMIT="${SEEKGENE_ALLCOOLS_COMMIT:-b84c180752c7bcc090994efc8534852d497f59d2}"
 SEEKGENE_ALLCOOLS_REPO="${SEEKGENE_ALLCOOLS_REPO:-https://github.com/seekgene/ALLCools.git}"
-SEEKGENE_ALLCOOLS_REF="${SEEKGENE_ALLCOOLS_REF:-master}"
 
 if [[ -z "${CONDA_PREFIX:-}" ]]; then
     echo "error: CONDA_PREFIX is not set; run via 'pixi run setup-allcools'" >&2
@@ -13,9 +13,9 @@ fi
 tmpdir="$(mktemp -d)"
 trap 'rm -rf "${tmpdir}"' EXIT
 
-echo "[setup-allcools] cloning ${SEEKGENE_ALLCOOLS_REPO} @ ${SEEKGENE_ALLCOOLS_REF}"
+echo "[setup-allcools] cloning ${SEEKGENE_ALLCOOLS_REPO} @ ${SEEKGENE_ALLCOOLS_COMMIT}"
 git clone --quiet "${SEEKGENE_ALLCOOLS_REPO}" "${tmpdir}/ALLCools"
-git -C "${tmpdir}/ALLCools" checkout --quiet "${SEEKGENE_ALLCOOLS_REF}"
+git -C "${tmpdir}/ALLCools" checkout --quiet "${SEEKGENE_ALLCOOLS_COMMIT}"
 
 echo "[setup-allcools] pip install into ${CONDA_PREFIX}"
 if [[ -x "${CONDA_PREFIX}/bin/pip" ]]; then

@@ -1,5 +1,23 @@
 # Development log
 
+## 2026-06-23 — pin seekgene/ALLCools install commit
+
+**Task:** Pin seekgene/ALLCools install commit for reproducible `setup-allcools` (mirror Bismark install script).
+
+**Files changed:**
+- `scripts/install_seekgene_allcools.sh`
+- `docs/developers/logs.md`
+
+**Summary:**
+- Replaced floating `SEEKGENE_ALLCOOLS_REF=master` with pinned `SEEKGENE_ALLCOOLS_COMMIT=b84c180752c7bcc090994efc8534852d497f59d2` (allcools 1.2.0).
+
+**Checks performed:**
+- `pixi run setup-allcools`, `pixi run check-allcools-env`
+
+**Status:** done
+
+**Notes:** seekgene/ALLCools has no release tags; commit matches prior validation (allcools 1.2.0).
+
 ## 2026-06-18 — nine-stage end-to-end (`--stage all` / `run.sh`)
 
 **Task:** Validate full methylation-only pipeline (`fastp_split` → `bam_to_allc`) via local `run.sh` driver.

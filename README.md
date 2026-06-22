@@ -17,3 +17,27 @@ Since the enzymatic treatment converts unmethylated cytosines (C) to thymines (T
 ### Cell Barcode Whitelist Validation
 
 **Whitelist**: `whitelist/DD-MET5/U3CB_methylation.txt.gz` (829,440 × 17 bp cell barcodes)
+
+### Installation
+
+Requires [pixi](https://pixi.sh/) on **linux-64**.
+
+```bash
+git clone https://github.com/JarningGau/seeksoul-matrix.git
+cd seeksoul-matrix
+pixi install
+```
+
+The pixi environment provides core tools (`fastp`, `cutadapt`, `bowtie2`, `samtools`, Python 3.11). Two seekgene forks are installed separately into the active environment (not conda packages):
+
+```bash
+# bismark_align — seekgene/Bismark with --add_barcode / --add_umi
+pixi run setup-bismark
+pixi run check-bismark-env
+
+# bam_to_allc — seekgene/ALLCools with UR-tag UMI dedup
+pixi run setup-allcools
+pixi run check-allcools-env
+```
+
+Re-run `setup-bismark` and `setup-allcools` after `pixi install` recreates `.pixi/envs/default`.
