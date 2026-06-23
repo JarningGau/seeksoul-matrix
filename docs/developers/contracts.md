@@ -128,7 +128,8 @@ Per-chunk outputs under `work/<sample>/align/`:
 
 Contract:
 
-- Uses seekgene Bismark (stock bioconda Bismark lacks `--add_barcode` / `--add_umi`).
+- Uses seekgene Bismark (stock bioconda Bismark lacks `--add_barcode` / `--add_umi`); requires `bowtie2` on PATH (`check-bismark-env` verifies).
+- `bismark_align.py` prepends the Bismark executable directory to subprocess `PATH` so Bismark can invoke `bowtie2` on Slurm compute nodes without pixi activation.
 - Forward: `bismark --genome <bismark_ref> --parallel <N> -1 <fwd_r1> -2 <fwd_r2> -o <align_dir> -X <max_insert> --add_barcode --add_umi`.
 - Reverse: same with `--pbat`.
 - Default `bismark_parallel=8`, `bismark_max_insert=1000` (aligned with SeekSoulMethyl `step2.nf`).
@@ -279,5 +280,5 @@ Contract:
 - Default `bam_to_allc_cores=8`, `allcools_tag=UR`, `align_method=bismark`.
 - Skip barcode when `<barcode>_allc.gz` exists and is non-empty.
 - `OPENBLAS_NUM_THREADS=1`, `OMP_NUM_THREADS=1` during parallel workers.
-- Requires seekgene ALLCools fork (`pixi run setup-allcools`).
+- Requires seekgene ALLCools fork (`pixi run setup-allcools`) and `tabix` on PATH (`htslib` conda dep; `check-allcools-env` verifies). `bam_to_allc.py` prepends the pixi `bin` directory to subprocess `PATH` so ALLCools can invoke `tabix` on Slurm compute nodes without pixi activation (same pattern as `bismark_align` / bowtie2).
 - `generate-dataset`, merge/extract allc, and cross-chunk metric consolidation are out of scope for this stage.

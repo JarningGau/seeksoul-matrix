@@ -1,5 +1,23 @@
 # Development log
 
+## 2026-06-23 — HPC nine-stage end-to-end (Slurm `--stage all`)
+
+**Task:** Validate full methylation-only pipeline on HPC via Slurm DAG submit after PATH fixes for Bismark/bowtie2 and ALLCools/tabix.
+
+**Files changed:**
+- `docs/developers/logs.md`, `AGENTS.md`, `README.md`, `docs/developers/contracts.md`
+
+**Summary:**
+- HPC Slurm `--stage all --submit` completed all nine stages (`fastp_split` → `bam_to_allc`) on cluster compute nodes.
+- Supersedes prior "Slurm generation only / cluster submit not tested" notes for the nine-stage driver.
+
+**Checks performed:**
+- HPC manual validation (user-reported; full Slurm DAG through `09_bam_to_allc`)
+
+**Status:** done
+
+**Notes:** gexcb path not exercised. Local e2e remains `work/dd-met5-example` via `run.sh` (see 2026-06-18 entry).
+
 ## 2026-06-23 — bam_to_allc PATH for tabix on Slurm compute nodes
 
 **Task:** Fix HPC `bam_to_allc` failure: ALLCools found but internal `tabix` not on PATH on Slurm compute nodes (same class of issue as bowtie2 for Bismark).
@@ -20,10 +38,11 @@
 - `pixi run check-allcools-env`
 - `pixi run python scripts/bam_to_allc.py --help`
 - `pixi run bam-to-allc-dry-run`
+- HPC manual validation: `09_bam_to_allc` sbatch on Slurm compute nodes (user-reported; part of nine-stage HPC e2e)
 
-**Status:** needs_review
+**Status:** done
 
-**Notes:** HPC re-run of `09_bam_to_allc` sbatch pending user validation.
+**Notes:** Subprocess `PATH` prepend mirrors `bismark_align` bowtie2 fix; Slurm sbatch scripts do not need a separate `export PATH=...` line.
 
 ## 2026-06-23 — bismark_align PATH for Slurm compute nodes
 
@@ -98,7 +117,7 @@
 
 **Status:** done
 
-**Notes:** Supersedes the seven-stage e2e entry (stages 08–09 added). Slurm `run.sbatch` generation only (cluster submit not tested). gexcb path not exercised.
+**Notes:** Supersedes the seven-stage e2e entry (stages 08–09 added). Slurm DAG validated on HPC (2026-06-23); see that entry. gexcb path not exercised.
 
 ## 2026-06-18 — estimated_cells force_cell_num
 
