@@ -1,5 +1,24 @@
 # Development log
 
+## 2026-06-23 — eleven-stage HPC end-to-end (Slurm `--stage all`, prefix chunks)
+
+**Task:** Validate full methylation-only pipeline with barcode-prefix analysis chunks on HPC via Slurm DAG submit (`fastp_split` → `saturation`).
+
+**Files changed:**
+- `docs/developers/logs.md`
+
+**Summary:**
+- HPC Slurm `--stage all --submit` completed all eleven stages on cluster compute nodes using `workflow/dd_met5_test.json` (`split_fastq_prefix_bases=1`, `number_of_split_parts=2`, `force_cell_num=50`, tuned `slurm.*` resources).
+- Analysis chunks `A`/`G`/`T` via demux sub-shards → `regroup_shards` → per-prefix bismark through saturation (same stage sequence as local eleven-stage e2e).
+- Confirms `slurm.regroup_shards` partition fix and small-test Slurm resource tuning on real cluster submit.
+
+**Checks performed:**
+- HPC manual validation (user-reported; `run.sbatch` DAG through `10_saturation` on `work/test`, test FASTQs per `run.sh` HPC example)
+
+**Status:** done
+
+**Notes:** Supersedes 2026-06-23 nine-stage HPC e2e (pre-prefix-chunk driver). gexcb path and Slurm gexcb not exercised. Production-scale Slurm config (`workflow/dd_met5_slurm.json`) not run in this check.
+
 ## 2026-06-23 — tune dd_met5_test Slurm resources for small test data
 
 **Task:** Reduce Slurm CPU/memory requests in `workflow/dd_met5_test.json` for small test dataset (2-thread parallelism).
@@ -40,7 +59,7 @@
 
 **Status:** done
 
-**Notes:** `regroup_shards` was added in the chunk-split rewrite but workflow Slurm templates were not updated; same class of bug as any new stage missing from `slurm.<stage>`.
+**Notes:** `regroup_shards` was added in the chunk-split rewrite but workflow Slurm templates were not updated; same class of bug as any new stage missing from `slurm.<stage>`. Fix validated by eleven-stage HPC e2e entry above.
 
 ## 2026-06-23 — eleven-stage local e2e (prefix chunks)
 
@@ -67,7 +86,7 @@
 
 **Status:** done
 
-**Notes:** Supersedes 2026-06-18 nine-stage local e2e (read-order chunk IDs `0001`/`0002`). Closes the open item in the barcode-prefix rewrite log entry (full downstream on prefix shards). gexcb path and Slurm 11-stage submit not re-tested in this check.
+**Notes:** Supersedes 2026-06-18 nine-stage local e2e (read-order chunk IDs `0001`/`0002`). Closes the open item in the barcode-prefix rewrite log entry (full downstream on prefix shards). Slurm eleven-stage submit validated on HPC in separate entry above. gexcb path not exercised.
 
 ## 2026-06-23 — barcode-prefix chunk split rewrite
 
@@ -123,7 +142,7 @@
 
 **Status:** done
 
-**Notes:** HQ cell count depends on `cells/filtered_barcode_read_counts.csv` (10 barcodes in current example after gexcb re-run); 22 per-chunk BAM barcodes available. Slurm saturation job not executed on HPC in this check.
+**Notes:** HQ cell count depends on `cells/filtered_barcode_read_counts.csv` (10 barcodes in current example after gexcb re-run); 22 per-chunk BAM barcodes available. Slurm saturation validated on HPC in eleven-stage HPC e2e entry above.
 
 ## 2026-06-23 — gexcb path local validation (split → merge → allc)
 
@@ -151,7 +170,7 @@
 
 **Notes:** First split attempt without cleaning stale outputs merged 3805 barcodes; re-run after `rm -rf split_bams/* allcools` gave correct 22-cell result. Full gexcb `--stage all` from raw FASTQ not run (reuses prior align BAMs). Slurm gexcb path not tested.
 
-## 2026-06-23 — HPC nine-stage end-to-end (Slurm `--stage all`)
+## 2026-06-23 — HPC nine-stage end-to-end (Slurm `--stage all`) — superseded
 
 **Task:** Validate full methylation-only pipeline on HPC via Slurm DAG submit after PATH fixes for Bismark/bowtie2 and ALLCools/tabix.
 
@@ -159,15 +178,15 @@
 - `docs/developers/logs.md`, `AGENTS.md`, `README.md`, `docs/developers/contracts.md`
 
 **Summary:**
-- HPC Slurm `--stage all --submit` completed all nine stages (`fastp_split` → `bam_to_allc`) on cluster compute nodes.
+- HPC Slurm `--stage all --submit` completed all nine stages (`fastp_split` → `bam_to_allc`) on cluster compute nodes (read-order chunk IDs `0001`/`0002`, pre-prefix-chunk driver).
 - Supersedes prior "Slurm generation only / cluster submit not tested" notes for the nine-stage driver.
 
 **Checks performed:**
 - HPC manual validation (user-reported; full Slurm DAG through `09_bam_to_allc`)
 
-**Status:** done
+**Status:** done (superseded)
 
-**Notes:** gexcb path not exercised. Local eleven-stage e2e on prefix chunks: see 2026-06-23 entry (supersedes 2026-06-18 nine-stage local run).
+**Notes:** Superseded by eleven-stage HPC e2e with prefix chunks (`regroup_shards`, chunks `A`/`G`/`T`, through `saturation`). gexcb path not exercised.
 
 ## 2026-06-23 — bam_to_allc PATH for tabix on Slurm compute nodes
 
@@ -268,7 +287,7 @@
 
 **Status:** done
 
-**Notes:** Superseded by eleven-stage local e2e with prefix chunks (2026-06-23). Slurm DAG validated on HPC (2026-06-23); see that entry. gexcb path not exercised.
+**Notes:** Superseded by eleven-stage local e2e with prefix chunks (2026-06-23). Slurm eleven-stage DAG validated on HPC (2026-06-23); see that entry. gexcb path not exercised.
 
 ## 2026-06-18 — estimated_cells force_cell_num
 

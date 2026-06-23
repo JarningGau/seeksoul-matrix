@@ -84,6 +84,7 @@ End-to-end script generation and run:
 pixi run python scripts/make_cmd.py --workflow-config workflow/dd_met5_test.json --stage all
 bash work/<sample>/commands/run.sh
 # Slurm: same with --runner slurm → work/<sample>/commands/run.sbatch
+# HPC submit (login node): bash work/<sample>/commands/run.sbatch
 ```
 
 ## Pipeline stages
@@ -106,7 +107,7 @@ Implemented stages (`scripts/make_cmd.py`; contracts in `docs/developers/contrac
 
 `--stage all` generates per-stage scripts under `work/<sample>/commands/` plus a driver: `run.sh` (local) or `run.sbatch` (Slurm DAG). Analysis chunks are keyed by barcode prefix (`split_fastq_prefix_bases`, default `1`); `number_of_split_parts` controls read-order demux parallelism only. Barcode selection is **mutually exclusive**: `expected_cell_num` (default 3000, methylation-only path: count → estimate → split → merge → allc → saturation) or `gexcb` (RNA barcodes, split → merge → allc → saturation). Slurm emits per-chunk sbatch files for parallel stages and aggregate jobs for `estimated_cells` / `aggregate_ct_qc`.
 
-Eleven-stage driver (`fastp_split` → `saturation`) with barcode-prefix analysis chunks.
+Eleven-stage driver (`fastp_split` → `saturation`) with barcode-prefix analysis chunks. Methylation-only path validated locally (`run.sh`) and on HPC (`run.sbatch`; see `docs/developers/logs.md`).
 
 ## Coding Style & Naming Conventions
 
