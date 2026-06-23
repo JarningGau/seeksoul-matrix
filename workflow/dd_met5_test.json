@@ -39,7 +39,7 @@
         },
         "bismark_align": {
             "partition": "amd-ep2",
-            "mem": "32G",
+            "mem": "80G",
             "cpus_per_task": 8
         },
         "bam_sort": {
