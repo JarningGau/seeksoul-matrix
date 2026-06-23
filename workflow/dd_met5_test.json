@@ -14,69 +14,74 @@
     "gzip_level": 1,
     "filter_ch": 2,
     "bismark_ref": "/mnt/wd-4t/resource/mouse-reference-GRCm39/fasta/",
-    "bismark_parallel": 8,
+    "bismark_parallel": 2,
     "bismark_max_insert": 1000,
     "bismark_bin": "bismark",
-    "sort_threads": 6,
+    "sort_threads": 2,
     "samtools_bin": "samtools",
     "expected_cell_num": 10,
     "force_cell_num": 50,
-    "split_bams_cores": 8,
-    "merge_fr_bams_cores": 8,
+    "split_bams_cores": 2,
+    "merge_fr_bams_cores": 2,
     "genome_fa": "/mnt/wd-4t/resource/mouse-reference-GRCm39/fasta/genome.fa",
     "chrom_size_path": "/mnt/wd-4t/resource/mouse-reference-GRCm39/bed/chr_nochrM.bed",
-    "bam_to_allc_cores": 8,
+    "bam_to_allc_cores": 2,
     "allcools_tag": "UR",
     "saturation_reads_threshold": 50,
     "slurm": {
         "fastp_split": {
             "partition": "amd-ep2",
-            "mem": "16G",
-            "cpus_per_task": 8
+            "mem": "4G",
+            "cpus_per_task": 2
         },
         "demux_extract_bc": {
             "partition": "amd-ep2",
-            "mem": "16G",
-            "cpus_per_task": 8
+            "mem": "4G",
+            "cpus_per_task": 1
+        },
+        "regroup_shards": {
+            "partition": "amd-ep2",
+            "mem": "2G",
+            "cpus_per_task": 1
         },
         "bismark_align": {
             "partition": "amd-ep2",
-            "mem": "80G",
-            "cpus_per_task": 8
+            "mem": "20G",
+            "cpus_per_task": 2
         },
         "bam_sort": {
             "partition": "amd-ep2",
-            "mem": "16G",
-            "cpus_per_task": 8
+            "mem": "4G",
+            "cpus_per_task": 2
         },
         "count_mapped_reads": {
             "partition": "amd-ep2",
-            "mem": "16G",
-            "cpus_per_task": 8
+            "mem": "4G",
+            "cpus_per_task": 1
         },
         "estimated_cells": {
             "partition": "amd-ep2",
-            "mem": "8G",
-            "cpus_per_task": 4
+            "mem": "2G",
+            "cpus_per_task": 1
         },
         "split_bams": {
             "partition": "amd-ep2",
-            "mem": "32G",
-            "cpus_per_task": 8
+            "mem": "8G",
+            "cpus_per_task": 2
         },
         "merge_fr_bams": {
             "partition": "amd-ep2",
-            "mem": "32G",
-            "cpus_per_task": 8
+            "mem": "4G",
+            "cpus_per_task": 2
         },
         "bam_to_allc": {
             "partition": "amd-ep2",
-            "mem": "64G",
-            "cpus_per_task": 8
+            "mem": "8G",
+            "cpus_per_task": 2
         },
         "saturation": {
             "partition": "amd-ep2",
-            "mem": "8G",
+            "mem": "4G",
             "cpus_per_task": 1
         }
     }

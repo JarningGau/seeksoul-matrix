@@ -38,6 +38,11 @@
             "mem": "16G",
             "cpus_per_task": 8
         },
+        "regroup_shards": {
+            "partition": "amd-ep2",
+            "mem": "16G",
+            "cpus_per_task": 8
+        },
         "bismark_align": {
             "partition": "amd-ep2",
             "mem": "80G",

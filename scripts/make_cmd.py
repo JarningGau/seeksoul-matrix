@@ -1118,6 +1118,16 @@ def resolve_settings(args: argparse.Namespace) -> dict:
         raise ValueError(
             f"stage {stage} is not used when gexcb is set; use split_bams with --gexcb"
         )
+    if (
+        settings.get("runner") == "slurm"
+        and any(key in slurm_cfg_raw for key in SLURM_NEST_STAGE_KEYS)
+        and stage != "all"
+        and not settings["slurm_partition"]
+    ):
+        raise ValueError(
+            f"workflow slurm config missing partition for stage '{stage}'; "
+            "add slurm.<stage>.partition or pass --slurm-partition"
+        )
     settings["slurm_partition"] = settings["slurm_partition"] or "cpu"
     settings["slurm_mem"] = settings["slurm_mem"] or "16G"
     settings["slurm_cpus_per_task"] = settings["slurm_cpus_per_task"] or 8

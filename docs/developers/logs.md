@@ -1,5 +1,47 @@
 # Development log
 
+## 2026-06-23 — tune dd_met5_test Slurm resources for small test data
+
+**Task:** Reduce Slurm CPU/memory requests in `workflow/dd_met5_test.json` for small test dataset (2-thread parallelism).
+
+**Files changed:**
+- `workflow/dd_met5_test.json`
+- `docs/developers/logs.md`
+
+**Summary:**
+- Set `bismark_parallel`, `sort_threads`, `split_bams_cores`, `merge_fr_bams_cores`, `bam_to_allc_cores` to 2 (matching `fastp_threads` / `number_of_split_parts`).
+- Per-stage `slurm.*.cpus_per_task` aligned to actual thread usage (1 for single-threaded stages, 2 for parallel stages).
+- Memory reduced per stage (e.g. bam_to_allc 8G); bismark kept at 20G after local memtest (~17.3 GB peak with `bismark_parallel=2`).
+
+**Check performed:**
+- `pixi run python scripts/make_cmd.py --workflow-config workflow/dd_met5_test.json --stage all --runner slurm` → sbatch files show `#SBATCH --cpus-per-task=1|2` and mem 2G–16G.
+
+**Status:** done
+
+**Notes:** Production Slurm config remains in `workflow/dd_met5_slurm.json`.
+
+## 2026-06-23 — fix regroup_shards Slurm partition fallback
+
+**Task:** HPC e2e failed on `03_regroup_shards_*.sbatch` with invalid `#SBATCH --partition=cpu` when workflow JSON omitted `slurm.regroup_shards`.
+
+**Files changed:**
+- `workflow/dd_met5_test.json`, `workflow/dd_met5_slurm.json`, `workflow/dd_met5_gexcb_test.json`
+- `scripts/make_cmd.py`
+- `docs/developers/logs.md`
+
+**Summary:**
+- Added `slurm.regroup_shards` block (`amd-ep2`, 16G, 8 CPUs) to all workflow JSONs.
+- `resolve_settings` now errors early when per-stage nested `slurm` config lacks `partition` instead of silently defaulting to `cpu`.
+
+**Checks performed:**
+- `pixi run e2e-slurm-dry-run`
+- Generated `03_regroup_shards_A.sbatch` shows `#SBATCH --partition=amd-ep2`
+- Missing-config test: `regroup_shards` without `slurm` entry raises `ValueError`
+
+**Status:** done
+
+**Notes:** `regroup_shards` was added in the chunk-split rewrite but workflow Slurm templates were not updated; same class of bug as any new stage missing from `slurm.<stage>`.
+
 ## 2026-06-23 — eleven-stage local e2e (prefix chunks)
 
 **Task:** Validate full methylation-only pipeline with barcode-prefix analysis chunks (`regroup_shards` → `saturation`) via local `run.sh`.
