@@ -12,6 +12,7 @@ require_cmd() {
 
 require_cmd allcools
 require_cmd samtools
+require_cmd tabix
 
 version="$(allcools --version 2>&1 || true)"
 if [[ -z "${version}" ]]; then

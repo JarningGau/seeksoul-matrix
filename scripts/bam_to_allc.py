@@ -105,6 +105,14 @@ def resolve_env_executable(name: str) -> str:
     return name
 
 
+def subprocess_env() -> dict[str, str]:
+    """Prepend pixi/conda bin dir so allcools can find tabix on HPC nodes."""
+    env = os.environ.copy()
+    bin_dir = str(Path(sys.executable).resolve().parent)
+    env["PATH"] = bin_dir + os.pathsep + env.get("PATH", "")
+    return env
+
+
 def load_filtered_barcodes(path: Path | None) -> set[str] | None:
     if path is None:
         return None
@@ -151,13 +159,16 @@ def run_allcools_for_barcode(
     sorted_index = outdir / f"{barcode}_sort.bam.bai"
     allc_prefix = outdir / f"{barcode}_allc"
 
+    env = subprocess_env()
     subprocess.run(
         [samtools_bin, "sort", "-o", str(sorted_bam), str(bam_path)],
         check=True,
+        env=env,
     )
     subprocess.run(
         [samtools_bin, "index", str(sorted_bam)],
         check=True,
+        env=env,
     )
 
     cmd = [
@@ -176,7 +187,7 @@ def run_allcools_for_barcode(
     if tag:
         cmd.extend(["--tag", tag])
 
-    subprocess.run(cmd, check=True)
+    subprocess.run(cmd, check=True, env=env)
 
     if sorted_bam.exists():
         sorted_bam.unlink()

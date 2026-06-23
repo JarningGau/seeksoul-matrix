@@ -1,5 +1,30 @@
 # Development log
 
+## 2026-06-23 — bam_to_allc PATH for tabix on Slurm compute nodes
+
+**Task:** Fix HPC `bam_to_allc` failure: ALLCools found but internal `tabix` not on PATH on Slurm compute nodes (same class of issue as bowtie2 for Bismark).
+
+**Files changed:**
+- `pixi.toml`, `pixi.lock`
+- `scripts/bam_to_allc.py`
+- `scripts/check_allcools_env.sh`
+- `docs/developers/logs.md`
+
+**Summary:**
+- Added explicit `htslib` conda dependency (provides `tabix` alongside `samtools`).
+- Prepend pixi/conda `bin` to `PATH` in `bam_to_allc` subprocess env so ALLCools can invoke `tabix` on compute nodes without pixi activation.
+- `check-allcools-env` now verifies `tabix` on PATH.
+
+**Checks performed:**
+- `pixi install`
+- `pixi run check-allcools-env`
+- `pixi run python scripts/bam_to_allc.py --help`
+- `pixi run bam-to-allc-dry-run`
+
+**Status:** needs_review
+
+**Notes:** HPC re-run of `09_bam_to_allc` sbatch pending user validation.
+
 ## 2026-06-23 — bismark_align PATH for Slurm compute nodes
 
 **Task:** Fix HPC `bismark_align` failure: Bismark found but internal `bowtie2 --version` returned 32512 (command not found) on Slurm compute nodes without pixi PATH.
