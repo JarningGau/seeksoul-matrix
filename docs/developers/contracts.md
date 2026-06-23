@@ -324,31 +324,40 @@ Contract:
 
 ### `saturation`
 
-Purpose: estimate sample-level sequencing saturation curve via subsampling simulation on pre-dedup per-cell BAM molecule multiplicity histograms (dbit-matrix style; adapted for DD-MET5 single-cell chemistry).
+Purpose: estimate sample-level genome-fraction saturation curve via subsampling simulation on pre-dedup per-cell BAM per-base depth histograms (dbit-matrix CpG-coverage style, adapted for DD-MET5 single-cell breadth fraction).
 
 Inputs:
 
-- `work/<sample>/split_bams/merged/<chunk>_merged_fr_bam/<barcode>.bam` — pre-dedup per-cell BAMs (must retain `UR` UMI tag)
+- `work/<sample>/split_bams/merged/<chunk>_merged_fr_bam/<barcode>.bam` — pre-dedup per-cell BAMs
 - Cell read-count table (HQ filter):
   - methylation-only: `work/<sample>/cells/filtered_barcode_read_counts.csv` (`aligned_reads`, `barcode`)
   - gexcb: `work/<sample>/split_bams/merged/*_merge_filtered_barcode_reads_counts.csv` (`reads_counts`, `barcode`; summed across chunks)
+- `chrom_size_path`: chromosome sizes BED; summed to genome size `G` for normalization
 
 Workflow parameters:
 
 - `saturation_reads_threshold` (default `100`): minimum aligned reads for HQ cell inclusion
+- `saturation_max_cells` (default `100`): maximum HQ cells used for curve estimation
+- `saturation_sample_seed` (default `42`): random seed when sampling HQ cells above `saturation_max_cells`
+- `saturation_linear_r2_threshold` (default `0.99`): linear-fit R² at/above which the linear extrapolation is used instead of the saturation curve
 
 Outputs under `work/<sample>/qc/saturation/`:
 
 | File | Description |
 |------|-------------|
-| `saturation_curve.png` | Observed median + fitted exponential curve + 2× prediction |
-| `saturation_summary.tsv` | One-row TSV: `sample_id`, `observed_median_unique_molecules`, `theoretical_max_median_unique_molecules`, `predicted_median_unique_molecules_at_2x`, `saturation_rate`, `hq_cell_count` |
+| `saturation_curve.png` | Observed median genome fraction (IQR error bars) + fitted line/curve + 2× prediction |
+| `saturation_summary.tsv` | One-row TSV: `sample_id`, `observed_median_genome_fraction`, `theoretical_max_median_genome_fraction`, `predicted_median_genome_fraction_at_2x`, `saturation_rate`, `extrapolation_model`, `hq_cell_count`, `sampled_cell_count`, `sample_seed` |
 
 Contract:
 
-- Build per-cell molecule multiplicity histogram from `(chrom, pos, strand, UMI)` keys across **all chunks** for each barcode; do not use deduplicated ALLC (`cov` is post-UMI-dedup and unsuitable for subsampling simulation).
-- For each HQ cell, compute expected unique molecules at fixed coverage fractions (1%–100%); take median across HQ cells at each fraction.
-- Fit `y = a × (1 − exp(−b × f))`; `saturation_rate = observed@100% / a × 100`.
-- Y-axis semantics: median unique **molecules** per cell (not CpG sites).
+- Build per-cell per-base depth histogram from aligned primary reads across **all chunks** for each barcode; do not use deduplicated ALLC (`cov` is post-UMI-dedup and unsuitable for subsampling simulation).
+- Depth is counted per **sequencing fragment** (read pair): PE mates share a query name and contribute at most once to each reference position's depth (overlapping mates are de-duplicated), so the subsampling unit matches a real fragment.
+- Genome fraction at subsample depth `f`: `sum_d count(d) × (1 − (1−f)^d) / G`, where `count(d)` is the number of reference positions with fragment depth `d`.
+- HQ cells: `aligned_reads > saturation_reads_threshold` and per-cell BAM present. If HQ count exceeds `saturation_max_cells`, randomly sample `saturation_max_cells` cells (fixed `saturation_sample_seed`; HQ list sorted before sampling).
+- For each subsample fraction (1%–100%), compute per-cell genome fraction; aggregate with **median** and **IQR** (asymmetric `Q1`/`Q3` error bars) across sampled cells.
+- Extrapolation (`f` beyond 1×): fit both a through-origin linear model `y = m × f` and a saturation curve `y = a × (1 − exp(−b × f))` to the median curve.
+  - If the linear fit `R² ≥ saturation_linear_r2_threshold` (data essentially unsaturated), report `extrapolation_model = linear`, `predicted@2× = m × 2`, and `theoretical_max = saturation_rate = NA` (the asymptote is unidentifiable in the linear regime).
+  - Otherwise report `extrapolation_model = saturation`, `theoretical_max = a`, `predicted@2× = a × (1 − exp(−2b))`, and `saturation_rate = median@100% / a × 100`.
+- Y-axis semantics: median **genome fraction** (0–1 in TSV; plot as %).
 - Single sample-level job (no chunking); supports `--dry-run`.
 - Does not depend on `merge_sc_metrics` or ALLCools count sidecars.

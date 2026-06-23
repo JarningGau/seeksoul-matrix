@@ -43,7 +43,7 @@ STAGE_REQUIRED_FIELDS = {
     "split_bams": [],
     "merge_fr_bams": [],
     "bam_to_allc": ["genome_fa", "chrom_size_path"],
-    "saturation": [],
+    "saturation": ["chrom_size_path"],
 }
 DEFAULT_BARCODE_WHITELIST = "whitelist/DD-MET5/U3CB_methylation.txt.gz"
 DEFAULT_EXPECTED_CELL_NUM = 3000
@@ -253,6 +253,24 @@ def parse_args() -> argparse.Namespace:
         "--saturation-reads-threshold",
         type=float,
         help="HQ cell reads threshold for saturation stage. Default: 100.",
+    )
+    parser.add_argument(
+        "--saturation-max-cells",
+        type=int,
+        help="Maximum HQ cells for saturation estimation. Default: 100.",
+    )
+    parser.add_argument(
+        "--saturation-sample-seed",
+        type=int,
+        help="Random seed for saturation HQ cell sampling. Default: 42.",
+    )
+    parser.add_argument(
+        "--saturation-linear-r2-threshold",
+        type=float,
+        help=(
+            "Linear-fit R^2 above which saturation uses linear extrapolation "
+            "instead of the saturation curve. Default: 0.99."
+        ),
     )
     parser.add_argument(
         "--submit",
@@ -551,8 +569,16 @@ def build_saturation_command(args: argparse.Namespace, sample_work: Path) -> str
         str(args.saturation_script),
         "--work-path",
         str(sample_work),
+        "--chrom-size-path",
+        str(args.chrom_size_path),
         "--reads-threshold",
         str(args.saturation_reads_threshold),
+        "--max-cells",
+        str(args.saturation_max_cells),
+        "--sample-seed",
+        str(args.saturation_sample_seed),
+        "--linear-r2-threshold",
+        str(args.saturation_linear_r2_threshold),
     ]
     return quoted(command)
 
@@ -943,6 +969,10 @@ def validate_inputs_for_stage(
         script_path = Path(settings["saturation_script"])
         if not script_path.is_file():
             raise FileNotFoundError(f"saturation_script not found: {script_path}")
+        wic.require_file(
+            "chrom_size_path",
+            wic.resolve_config_path(settings["chrom_size_path"]),
+        )
         merged_root = sample_work / "split_bams" / "merged"
         bam_files = list(merged_root.glob("*_merged_fr_bam/*.bam"))
         if not bam_files:
@@ -1026,6 +1056,18 @@ def resolve_settings(args: argparse.Namespace) -> dict:
         "saturation_reads_threshold": pick(
             args.saturation_reads_threshold,
             cfg.get("saturation_reads_threshold"),
+        ),
+        "saturation_max_cells": pick(
+            args.saturation_max_cells,
+            cfg.get("saturation_max_cells"),
+        ),
+        "saturation_sample_seed": pick(
+            args.saturation_sample_seed,
+            cfg.get("saturation_sample_seed"),
+        ),
+        "saturation_linear_r2_threshold": pick(
+            args.saturation_linear_r2_threshold,
+            cfg.get("saturation_linear_r2_threshold"),
         ),
         "slurm_partition": pick(args.slurm_partition, stage_slurm_cfg.get("partition")),
         "slurm_mem": pick(args.slurm_mem, stage_slurm_cfg.get("mem")),
@@ -1111,8 +1153,25 @@ def resolve_settings(args: argparse.Namespace) -> dict:
             if settings["saturation_reads_threshold"] is not None
             else 100.0
         )
+        settings["saturation_max_cells"] = int(
+            settings["saturation_max_cells"]
+            if settings["saturation_max_cells"] is not None
+            else 100
+        )
+        settings["saturation_sample_seed"] = int(
+            settings["saturation_sample_seed"]
+            if settings["saturation_sample_seed"] is not None
+            else 42
+        )
+        settings["saturation_linear_r2_threshold"] = (
+            float(settings["saturation_linear_r2_threshold"])
+            if settings["saturation_linear_r2_threshold"] is not None
+            else 0.99
+        )
         if settings["saturation_reads_threshold"] <= 0:
             raise ValueError("saturation_reads_threshold must be > 0")
+        if settings["saturation_max_cells"] <= 0:
+            raise ValueError("saturation_max_cells must be > 0")
     settings["_stage_sequence"] = build_stage_sequence(settings)
     if stage in ("count_mapped_reads", "estimated_cells") and settings["_barcode_mode"] == "gexcb":
         raise ValueError(
@@ -2181,7 +2240,13 @@ def main() -> int:
     elif settings["stage"] == "saturation":
         command_args = argparse.Namespace(
             saturation_script=settings["saturation_script"],
+            chrom_size_path=str(wic.resolve_config_path(settings["chrom_size_path"])),
             saturation_reads_threshold=settings["saturation_reads_threshold"],
+            saturation_max_cells=settings["saturation_max_cells"],
+            saturation_sample_seed=settings["saturation_sample_seed"],
+            saturation_linear_r2_threshold=settings[
+                "saturation_linear_r2_threshold"
+            ],
         )
         command = build_saturation_command(command_args, sample_work)
         if settings["runner"] == "local":

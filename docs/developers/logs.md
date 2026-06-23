@@ -1,5 +1,31 @@
 # Development log
 
+## 2026-06-23 — saturation correctness (PE fragment depth, median, linear-first extrapolation)
+
+**Task:** Address saturation-algorithm correctness review items #1–#4: PE mate double-counting, optimistic/unidentifiable single-exponential asymptote, and mean-then-fit aggregation.
+
+**Files changed:**
+- `scripts/saturation.py`
+- `scripts/make_cmd.py`
+- `docs/developers/contracts.md`
+- `docs/developers/logs.md`
+
+**Summary:**
+- Depth now counted per **sequencing fragment**: PE mates (shared query name) are de-duplicated per position via a union of mate reference positions, so overlapping mates no longer inflate depth (#3).
+- Cross-cell aggregation switched from **mean + 95% CI** to **median + IQR** (asymmetric Q1/Q3 error bars), matching dbit-matrix robustness (#4).
+- Extrapolation is now **linear-first**: fit a through-origin line `y=m·f` and the saturation curve; if linear `R² ≥ saturation_linear_r2_threshold` (default 0.99) use linear (`predicted@2×=m·2`, `theoretical_max`/`saturation_rate`=NA), else use the saturation curve (#1/#2). New `extrapolation_model` column records the choice.
+- TSV columns renamed `*_mean_*` → `*_median_*`; added `extrapolation_model`. New CLI flag `--linear-r2-threshold` and workflow key `saturation_linear_r2_threshold` plumbed through `make_cmd.py`.
+
+**Checks performed:**
+- `pixi run python scripts/saturation.py --help`
+- `pixi run saturation-dry-run` → command includes `--linear-r2-threshold 0.99`
+- `pixi run e2e-dry-run` / `pixi run e2e-slurm-dry-run` → OK
+- Real run on `work/dd-met5-example` (`--reads-threshold 50`): `linear_r2=0.998`, `extrapolation_model=linear`, `saturation_rate=NA`, `predicted_2x≈2×observed`; forced saturation branch (`--linear-r2-threshold 0.9999`) → `saturation_rate≈22.98%`. PNG + TSV regenerated and inspected.
+
+**Status:** done
+
+**Notes:** Breaking change to `saturation_summary.tsv` columns and plot semantics (median/IQR, linear-vs-saturation model). On the current sparse example the data is undersaturated, so the honest output is `linear` / `NA` rather than the previously reported optimistic saturation rate.
+
 ## 2026-06-23 — tune dd_met5_slurm resources (fastp 8 / bismark 16)
 
 **Task:** Scale production Slurm workflow to `bismark_parallel=16` (160G); align downstream parallel stages.
@@ -150,6 +176,30 @@
 **Status:** done
 
 **Notes:** Full downstream (bismark → saturation) validated in the eleven-stage local e2e entry above. Demux+regroup validation here confirmed chunk disjointness at FASTQ level. Workflow key renamed to `split_fastq_prefix_bases` (CLI: `--split-fastq-prefix-bases`) to distinguish from SeekSoul `split_fastq`.
+
+## 2026-06-23 — saturation stage (genome fraction curve)
+
+**Task:** Refactor `saturation` from UMI molecule curve to genome-fraction breadth curve with cell sampling and error bars.
+
+**Files changed:**
+- `scripts/saturation.py`
+- `scripts/make_cmd.py`
+- `docs/developers/contracts.md`
+- `docs/developers/logs.md`
+
+**Summary:**
+- Y-axis: mean genome fraction (`covered_positions / G`) from pre-dedup per-cell BAM per-base depth histograms; requires `chrom_size_path`.
+- Sample at most `saturation_max_cells` (default 100) HQ cells; random sample with `saturation_sample_seed` (default 42) when HQ count exceeds cap.
+- Plot: mean curve with 95% CI error bars; summary TSV columns renamed to `observed_mean_genome_fraction`, etc.
+
+**Checks performed:**
+- `pixi run saturation-dry-run` → `11_saturation.sh` with `--chrom-size-path`, `--max-cells`, `--sample-seed`
+- `pixi run e2e-dry-run` → driver includes updated saturation command
+- `python scripts/saturation.py --work-path work/dd-met5-example --chrom-size-path ... --reads-threshold 50` → PNG + TSV (`saturation_rate≈43.35`, `hq_cell_count=50`, `sampled_cell_count=50`)
+
+**Status:** done
+
+**Notes:** Breaking change to `saturation_summary.tsv` column names and plot semantics.
 
 ## 2026-06-23 — saturation stage (pre-dedup BAM molecule curve)
 
