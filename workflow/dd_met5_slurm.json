@@ -5,8 +5,8 @@
     "r1": "data/test_R1.fastq.gz",
     "r2": "data/test_R2.fastq.gz",
     "work_root": "work",
-    "fastp_threads": 2,
-    "number_of_split_parts": 2,
+    "fastp_threads": 8,
+    "number_of_split_parts": 8,
     "fastp_bin": "fastp",
     "barcode_whitelist": "whitelist/DD-MET5/U3CB_methylation.txt.gz",
     "barcode_hamming_distance": 1,
@@ -25,6 +25,7 @@
     "chrom_size_path": "/mnt/wd-4t/resource/mouse-reference-GRCm39/bed/chr_nochrM.bed",
     "bam_to_allc_cores": 8,
     "allcools_tag": "UR",
+    "saturation_reads_threshold": 50,
     "slurm": {
         "fastp_split": {
             "partition": "amd-ep2",
@@ -70,6 +71,11 @@
             "partition": "amd-ep2",
             "mem": "64G",
             "cpus_per_task": 8
+        },
+        "saturation": {
+            "partition": "amd-ep2",
+            "mem": "8G",
+            "cpus_per_task": 1
         }
     }
 }

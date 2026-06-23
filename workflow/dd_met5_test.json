@@ -26,6 +26,7 @@
     "chrom_size_path": "/mnt/wd-4t/resource/mouse-reference-GRCm39/bed/chr_nochrM.bed",
     "bam_to_allc_cores": 8,
     "allcools_tag": "UR",
+    "saturation_reads_threshold": 50,
     "slurm": {
         "fastp_split": {
             "partition": "amd-ep2",
@@ -71,6 +72,11 @@
             "partition": "amd-ep2",
             "mem": "64G",
             "cpus_per_task": 8
+        },
+        "saturation": {
+            "partition": "amd-ep2",
+            "mem": "8G",
+            "cpus_per_task": 1
         }
     }
 }

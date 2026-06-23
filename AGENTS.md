@@ -58,6 +58,7 @@ pixi run estimated-cells-dry-run   # estimated_cells script generation
 pixi run split-bams-dry-run        # split_bams script generation
 pixi run merge-fr-bams-dry-run     # merge_fr_bams script generation
 pixi run bam-to-allc-dry-run       # bam_to_allc script generation
+pixi run saturation-dry-run        # saturation script generation
 pixi run e2e-dry-run           # --stage all (local run.sh) dry-run
 pixi run e2e-slurm-dry-run     # --stage all (Slurm run.sbatch) dry-run
 ```
@@ -99,10 +100,11 @@ Implemented stages (`scripts/make_cmd.py`; contracts in `docs/developers/contrac
 | `split_bams` | `scripts/split_bams.py` | **validated** |
 | `merge_fr_bams` | `scripts/merge_fr_bams.py` | **validated** |
 | `bam_to_allc` | `scripts/bam_to_allc.py` | **validated** |
+| `saturation` | `scripts/saturation.py` | **validated** |
 
-`--stage all` generates per-stage scripts under `work/<sample>/commands/` plus a driver: `run.sh` (local) or `run.sbatch` (Slurm DAG). Barcode selection is **mutually exclusive**: `expected_cell_num` (default 3000, methylation-only path: count → estimate → split → merge → allc) or `gexcb` (RNA barcodes, split → merge → allc). Slurm emits per-chunk sbatch files for parallel stages and aggregate jobs for `estimated_cells` / `aggregate_ct_qc`.
+`--stage all` generates per-stage scripts under `work/<sample>/commands/` plus a driver: `run.sh` (local) or `run.sbatch` (Slurm DAG). Barcode selection is **mutually exclusive**: `expected_cell_num` (default 3000, methylation-only path: count → estimate → split → merge → allc → saturation) or `gexcb` (RNA barcodes, split → merge → allc → saturation). Slurm emits per-chunk sbatch files for parallel stages and aggregate jobs for `estimated_cells` / `aggregate_ct_qc`.
 
-Nine-stage driver (`fastp_split` → `bam_to_allc`) validated end-to-end locally via `run.sh` on `work/dd-met5-example` (both chunks) and on HPC via Slurm `run.sbatch` DAG submit (see `docs/developers/logs.md`). Slurm per-chunk sbatch generation validated for all stages.
+Ten-stage driver (`fastp_split` → `saturation`) validated locally via dry-run and `work/dd-met5-example` saturation run (see `docs/developers/logs.md`). Nine-stage driver (`fastp_split` → `bam_to_allc`) validated end-to-end locally via `run.sh` on `work/dd-met5-example` (both chunks) and on HPC via Slurm `run.sbatch` DAG submit (see `docs/developers/logs.md`). Slurm per-chunk sbatch generation validated for all stages.
 
 ## Coding Style & Naming Conventions
 
@@ -116,7 +118,7 @@ Follow **dbit-matrix** engineering patterns when implementing seeksoul-matrix; c
 
 ## Testing Guidelines
 
-No automated test suite yet. `fastp_split`, `demux_extract_bc`, `bismark_align`, `bam_sort`, `count_mapped_reads`, `estimated_cells`, `split_bams`, `merge_fr_bams`, `bam_to_allc`, and the nine-stage workflow driver (`--stage all` / `run.sh` or Slurm `run.sbatch`, methylation-only path) have been manually validated locally and on HPC (see `docs/developers/logs.md`). When adding tests, follow the template's regression style in `dbit-matrix/docs/maintenance/`. Before finishing workflow changes, run relevant CLI `--help`, `--version`, and `--dry-run` (or `pixi run fastp-dry-run` / `pixi run demux-dry-run` / `pixi run bismark-align-dry-run` / `pixi run bam-sort-dry-run` / `pixi run count-mapped-reads-dry-run` / `pixi run estimated-cells-dry-run` / `pixi run split-bams-dry-run` / `pixi run merge-fr-bams-dry-run` / `pixi run bam-to-allc-dry-run` / `pixi run e2e-dry-run` / `pixi run e2e-slurm-dry-run` for the workflow driver).
+No automated test suite yet. `fastp_split`, `demux_extract_bc`, `bismark_align`, `bam_sort`, `count_mapped_reads`, `estimated_cells`, `split_bams`, `merge_fr_bams`, `bam_to_allc`, `saturation`, and the ten-stage workflow driver (`--stage all` / `run.sh` or Slurm `run.sbatch`, methylation-only path) have been manually validated locally and on HPC (see `docs/developers/logs.md`). When adding tests, follow the template's regression style in `dbit-matrix/docs/maintenance/`. Before finishing workflow changes, run relevant CLI `--help`, `--version`, and `--dry-run` (or `pixi run fastp-dry-run` / `pixi run demux-dry-run` / `pixi run bismark-align-dry-run` / `pixi run bam-sort-dry-run` / `pixi run count-mapped-reads-dry-run` / `pixi run estimated-cells-dry-run` / `pixi run split-bams-dry-run` / `pixi run merge-fr-bams-dry-run` / `pixi run bam-to-allc-dry-run` / `pixi run saturation-dry-run` / `pixi run e2e-dry-run` / `pixi run e2e-slurm-dry-run` for the workflow driver).
 
 ## Lightweight Development Loop
 

@@ -16,3 +16,18 @@ pixi run python scripts/make_cmd.py \
   --genome-fa /storage/liliLab/gaojianing/resource/seeksoul/mouse-reference-GRCm39/fasta/genome.fa \
   --chrom-size-path /storage/liliLab/gaojianing/resource/seeksoul/mouse-reference-GRCm39/bed/chr_nochrM.bed \
   --submit
+
+
+pixi run python scripts/make_cmd.py \
+  --workflow-config workflow/dd_met5_slurm.json \
+  --stage all \
+  --fastp-threads 8 \
+  --number-of-split-parts 8 \
+  --force-cell-num 10000 \
+  --r1 /storage/liliLab/gaojianing/SeekSpace-DNAme-data/C283_Brain_DNAme_R1.fastq.gz \
+  --r2 /storage/liliLab/gaojianing/SeekSpace-DNAme-data/C283_Brain_DNAme_R2.fastq.gz \
+  --sample-id C283_Brain_DNAme \
+  --bismark-ref /storage/liliLab/gaojianing/resource/seeksoul/mouse-reference-GRCm39/fasta/ \
+  --genome-fa /storage/liliLab/gaojianing/resource/seeksoul/mouse-reference-GRCm39/fasta/genome.fa \
+  --chrom-size-path /storage/liliLab/gaojianing/resource/seeksoul/mouse-reference-GRCm39/bed/chr_nochrM.bed \
+  --submit

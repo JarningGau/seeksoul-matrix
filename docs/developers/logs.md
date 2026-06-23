@@ -1,5 +1,33 @@
 # Development log
 
+## 2026-06-23 — saturation stage (pre-dedup BAM molecule curve)
+
+**Task:** Add dbit-matrix-style sequencing saturation QC stage after `bam_to_allc`.
+
+**Files changed:**
+- `scripts/saturation.py` (new)
+- `scripts/make_cmd.py`
+- `pixi.toml`, `pixi.lock`
+- `workflow/dd_met5_test.json`, `workflow/dd_met5_slurm.json`, `workflow/dd_met5_gexcb_test.json`
+- `docs/developers/contracts.md`
+- `AGENTS.md`
+- `docs/developers/logs.md`
+
+**Summary:**
+- New stage `saturation` (stage 10 meth-only / stage 08 gexcb): builds per-cell molecule multiplicity histograms from pre-dedup `split_bams/merged/*_merged_fr_bam/<barcode>.bam` using `(chrom, pos, strand, UR)` keys aggregated across chunks; fits exponential subsampling curve; writes `qc/saturation/saturation_curve.png` and `saturation_summary.tsv`.
+- Does not use deduplicated ALLC (`cov` unsuitable for subsampling simulation).
+- Workflow key `saturation_reads_threshold` (default 100; test JSONs use 50).
+
+**Checks performed:**
+- `pixi run saturation-dry-run` → `10_saturation.sh`
+- `pixi run e2e-dry-run` / `pixi run e2e-slurm-dry-run` → driver includes saturation
+- `python scripts/saturation.py --work-path work/dd-met5-example --reads-threshold 50 --dry-run` → 22 cell BAMs, 5 HQ cells
+- `python scripts/saturation.py --work-path work/dd-met5-example --reads-threshold 50` → PNG + TSV (`saturation_rate=25.93`, `hq_cell_count=5`)
+
+**Status:** done
+
+**Notes:** HQ cell count depends on `cells/filtered_barcode_read_counts.csv` (10 barcodes in current example after gexcb re-run); 22 per-chunk BAM barcodes available. Slurm saturation job not executed on HPC in this check.
+
 ## 2026-06-23 — gexcb path local validation (split → merge → allc)
 
 **Task:** Validate RNA-barcode (`gexcb`) workflow path on `work/dd-met5-example` using intersection test barcodes.

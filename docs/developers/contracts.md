@@ -4,9 +4,9 @@ Normative input/output contracts for seeksoul-matrix workflow stages.
 
 ## Main stage order (planned)
 
-`fastp_split -> demux_extract_bc -> bismark_align -> bam_sort -> (count_mapped_reads -> estimated_cells)? -> split_bams -> merge_fr_bams -> bam_to_allc -> ...`
+`fastp_split -> demux_extract_bc -> bismark_align -> bam_sort -> (count_mapped_reads -> estimated_cells)? -> split_bams -> merge_fr_bams -> bam_to_allc -> saturation`
 
-`fastp_split`, `demux_extract_bc`, `bismark_align`, `bam_sort`, `count_mapped_reads`, `estimated_cells`, `split_bams`, `merge_fr_bams`, and `bam_to_allc` are implemented in this repository revision.
+`fastp_split`, `demux_extract_bc`, `bismark_align`, `bam_sort`, `count_mapped_reads`, `estimated_cells`, `split_bams`, `merge_fr_bams`, `bam_to_allc`, and `saturation` are implemented in this repository revision.
 
 ### Barcode selection mode (mutually exclusive)
 
@@ -282,3 +282,34 @@ Contract:
 - `OPENBLAS_NUM_THREADS=1`, `OMP_NUM_THREADS=1` during parallel workers.
 - Requires seekgene ALLCools fork (`pixi run setup-allcools`) and `tabix` on PATH (`htslib` conda dep; `check-allcools-env` verifies). `bam_to_allc.py` prepends the pixi `bin` directory to subprocess `PATH` so ALLCools can invoke `tabix` on Slurm compute nodes without pixi activation (same pattern as `bismark_align` / bowtie2).
 - `generate-dataset`, merge/extract allc, and cross-chunk metric consolidation are out of scope for this stage.
+
+### `saturation`
+
+Purpose: estimate sample-level sequencing saturation curve via subsampling simulation on pre-dedup per-cell BAM molecule multiplicity histograms (dbit-matrix style; adapted for DD-MET5 single-cell chemistry).
+
+Inputs:
+
+- `work/<sample>/split_bams/merged/<chunk>_merged_fr_bam/<barcode>.bam` — pre-dedup per-cell BAMs (must retain `UR` UMI tag)
+- Cell read-count table (HQ filter):
+  - methylation-only: `work/<sample>/cells/filtered_barcode_read_counts.csv` (`aligned_reads`, `barcode`)
+  - gexcb: `work/<sample>/split_bams/merged/*_merge_filtered_barcode_reads_counts.csv` (`reads_counts`, `barcode`; summed across chunks)
+
+Workflow parameters:
+
+- `saturation_reads_threshold` (default `100`): minimum aligned reads for HQ cell inclusion
+
+Outputs under `work/<sample>/qc/saturation/`:
+
+| File | Description |
+|------|-------------|
+| `saturation_curve.png` | Observed median + fitted exponential curve + 2× prediction |
+| `saturation_summary.tsv` | One-row TSV: `sample_id`, `observed_median_unique_molecules`, `theoretical_max_median_unique_molecules`, `predicted_median_unique_molecules_at_2x`, `saturation_rate`, `hq_cell_count` |
+
+Contract:
+
+- Build per-cell molecule multiplicity histogram from `(chrom, pos, strand, UMI)` keys across **all chunks** for each barcode; do not use deduplicated ALLC (`cov` is post-UMI-dedup and unsuitable for subsampling simulation).
+- For each HQ cell, compute expected unique molecules at fixed coverage fractions (1%–100%); take median across HQ cells at each fraction.
+- Fit `y = a × (1 − exp(−b × f))`; `saturation_rate = observed@100% / a × 100`.
+- Y-axis semantics: median unique **molecules** per cell (not CpG sites).
+- Single sample-level job (no chunking); supports `--dry-run`.
+- Does not depend on `merge_sc_metrics` or ALLCools count sidecars.

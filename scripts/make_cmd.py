@@ -25,8 +25,9 @@ POST_BAM_SORT_METHY_ONLY = [
     "split_bams",
     "merge_fr_bams",
     "bam_to_allc",
+    "saturation",
 ]
-POST_BAM_SORT_GEXCB = ["split_bams", "merge_fr_bams", "bam_to_allc"]
+POST_BAM_SORT_GEXCB = ["split_bams", "merge_fr_bams", "bam_to_allc", "saturation"]
 ALL_STAGE_NAMES = [*BASE_STAGE_SEQUENCE, *POST_BAM_SORT_METHY_ONLY]
 STAGE_CHOICES = [*ALL_STAGE_NAMES, "all"]
 SLURM_NEST_STAGE_KEYS = frozenset(ALL_STAGE_NAMES)
@@ -40,6 +41,7 @@ STAGE_REQUIRED_FIELDS = {
     "split_bams": [],
     "merge_fr_bams": [],
     "bam_to_allc": ["genome_fa", "chrom_size_path"],
+    "saturation": [],
 }
 DEFAULT_BARCODE_WHITELIST = "whitelist/DD-MET5/U3CB_methylation.txt.gz"
 DEFAULT_EXPECTED_CELL_NUM = 3000
@@ -231,6 +233,15 @@ def parse_args() -> argparse.Namespace:
             "allcools executable path or command name. "
             "Default: allcools from current Python env if available, else allcools."
         ),
+    )
+    parser.add_argument(
+        "--saturation-script",
+        help="Path to saturation script. Default: scripts/saturation.py.",
+    )
+    parser.add_argument(
+        "--saturation-reads-threshold",
+        type=float,
+        help="HQ cell reads threshold for saturation stage. Default: 100.",
     )
     parser.add_argument(
         "--submit",
@@ -468,6 +479,18 @@ def build_count_mapped_reads_chunk_command(sample_work: Path, chunk_id: str) -> 
             chunk_id,
         ]
     )
+
+
+def build_saturation_command(args: argparse.Namespace, sample_work: Path) -> str:
+    command = [
+        sys.executable,
+        str(args.saturation_script),
+        "--work-path",
+        str(sample_work),
+        "--reads-threshold",
+        str(args.saturation_reads_threshold),
+    ]
+    return quoted(command)
 
 
 def build_estimated_cells_command(
@@ -844,6 +867,16 @@ def validate_inputs_for_stage(
         )
         wic.require_optional_executable_path("samtools_bin", settings["samtools_bin"])
         wic.require_optional_executable_path("allcools_bin", settings["allcools_bin"])
+    elif stage == "saturation":
+        script_path = Path(settings["saturation_script"])
+        if not script_path.is_file():
+            raise FileNotFoundError(f"saturation_script not found: {script_path}")
+        merged_root = sample_work / "split_bams" / "merged"
+        bam_files = list(merged_root.glob("*_merged_fr_bam/*.bam"))
+        if not bam_files:
+            raise FileNotFoundError(
+                f"no per-cell BAM files found under {merged_root}/*_merged_fr_bam/"
+            )
     else:
         raise ValueError(f"unsupported stage for input validation: {stage}")
 
@@ -914,6 +947,11 @@ def resolve_settings(args: argparse.Namespace) -> dict:
         "bam_to_allc_cores": pick(args.bam_to_allc_cores, cfg.get("bam_to_allc_cores")),
         "allcools_tag": pick(args.allcools_tag, cfg.get("allcools_tag")),
         "allcools_bin": pick(args.allcools_bin, cfg.get("allcools_bin")),
+        "saturation_script": pick(args.saturation_script, cfg.get("saturation_script")),
+        "saturation_reads_threshold": pick(
+            args.saturation_reads_threshold,
+            cfg.get("saturation_reads_threshold"),
+        ),
         "slurm_partition": pick(args.slurm_partition, stage_slurm_cfg.get("partition")),
         "slurm_mem": pick(args.slurm_mem, stage_slurm_cfg.get("mem")),
         "slurm_cpus_per_task": pick(
@@ -980,6 +1018,17 @@ def resolve_settings(args: argparse.Namespace) -> dict:
         settings["allcools_bin"] = normalize_executable_setting(
             settings["allcools_bin"], "allcools"
         )
+    if stage in ("saturation", "all"):
+        settings["saturation_script"] = (
+            settings["saturation_script"] or "scripts/saturation.py"
+        )
+        settings["saturation_reads_threshold"] = (
+            float(settings["saturation_reads_threshold"])
+            if settings["saturation_reads_threshold"] is not None
+            else 100.0
+        )
+        if settings["saturation_reads_threshold"] <= 0:
+            raise ValueError("saturation_reads_threshold must be > 0")
     settings["_stage_sequence"] = build_stage_sequence(settings)
     if stage in ("count_mapped_reads", "estimated_cells") and settings["_barcode_mode"] == "gexcb":
         raise ValueError(
@@ -1178,6 +1227,12 @@ def driver_scripts_for_stage(
             for script in scripts
             if script.name.startswith(f"{prefix}_bam_to_allc_")
             and script.suffix == ".sbatch"
+        ]
+    if stage_name == "saturation":
+        return [
+            script
+            for script in scripts
+            if script.name.startswith(f"{prefix}_saturation")
         ]
     return scripts
 
@@ -1911,6 +1966,42 @@ def main() -> int:
                     )
                     generate_slurm_script(command, script_path, log_dir, slurm_args)
                 generated_scripts.append(script_path)
+    elif settings["stage"] == "saturation":
+        command_args = argparse.Namespace(
+            saturation_script=settings["saturation_script"],
+            saturation_reads_threshold=settings["saturation_reads_threshold"],
+        )
+        command = build_saturation_command(command_args, sample_work)
+        if settings["runner"] == "local":
+            script_path = command_dir / stage_script_name(settings, "saturation")
+        else:
+            script_path = command_dir / stage_script_name(
+                settings, "saturation", suffix="sbatch"
+            )
+        print(f"[make_cmd] runner={settings['runner']}")
+        print(f"[make_cmd] stage={settings['stage']}")
+        print(f"[make_cmd] sample_id={settings['sample_id']}")
+        print(f"[make_cmd] script={script_path}")
+        print(f"[make_cmd] command={command}")
+        if settings["dry_run"]:
+            return 0
+        if settings["runner"] == "local":
+            generate_local_script(command, script_path)
+        else:
+            slurm_args = argparse.Namespace(
+                job_name=f"seeksoul_saturation_{settings['sample_id']}",
+                slurm_partition=settings["slurm_partition"],
+                slurm_mem=settings["slurm_mem"],
+                slurm_cpus_per_task=settings["slurm_cpus_per_task"],
+                slurm_output=settings["slurm_output"].replace(
+                    "%x", f"seeksoul_saturation_{settings['sample_id']}"
+                ),
+                slurm_error=settings["slurm_error"].replace(
+                    "%x", f"seeksoul_saturation_{settings['sample_id']}"
+                ),
+            )
+            generate_slurm_script(command, script_path, log_dir, slurm_args)
+        generated_scripts.append(script_path)
     else:
         raise ValueError(f"unsupported stage: {settings['stage']}")
 
