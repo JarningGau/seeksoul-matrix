@@ -1,5 +1,28 @@
 # Development log
 
+## 2026-06-24 — saturation plot x-axis in Gbp from fastp
+
+**Task:** Change saturation curve x-axis from coverage fraction to sequencing depth (Gbp) sourced from fastp report.
+
+**Files changed:**
+- `scripts/saturation.py`
+- `scripts/make_cmd.py`
+- `docs/developers/contracts.md`
+- `docs/developers/logs.md`
+
+**Summary:**
+- Plot x-axis now uses `summary.after_filtering.total_bases` (fallback `before_filtering`) from `shard_fastq/fastp.json`, converted to Gbp; subsample points at fraction `f` are plotted at `f × total_Gbp`, and the 2× prediction at `2 × total_Gbp`.
+- Added `--fastp-json` (auto-detect under `<work_path>/shard_fastq/`); `make_cmd` passes the resolved path in generated saturation commands.
+- Curve fitting still uses coverage fractions internally; only display axis changed.
+
+**Checks performed:**
+- `pixi run python scripts/saturation.py --help`
+- `pixi run saturation-dry-run` → command includes `--fastp-json`
+- Dry-run on `work/dd-met5-example` → `sequencing_gbp=0.297834`
+- Real run on `work/dd-met5-example` (`--reads-threshold 50`) → PNG regenerated
+
+**Status:** done
+
 ## 2026-06-23 — saturation correctness (PE fragment depth, median, linear-first extrapolation)
 
 **Task:** Address saturation-algorithm correctness review items #1–#4: PE mate double-counting, optimistic/unidentifiable single-exponential asymptote, and mean-then-fit aggregation.

@@ -328,6 +328,7 @@ Purpose: estimate sample-level genome-fraction saturation curve via subsampling 
 
 Inputs:
 
+- `work/<sample>/shard_fastq/fastp.json` — fastp report; `summary.after_filtering.total_bases` (fallback `before_filtering`) supplies plot x-axis sequencing depth in Gbp
 - `work/<sample>/split_bams/merged/<chunk>_merged_fr_bam/<barcode>.bam` — pre-dedup per-cell BAMs
 - Cell read-count table (HQ filter):
   - methylation-only: `work/<sample>/cells/filtered_barcode_read_counts.csv` (`aligned_reads`, `barcode`)
@@ -345,7 +346,7 @@ Outputs under `work/<sample>/qc/saturation/`:
 
 | File | Description |
 |------|-------------|
-| `saturation_curve.png` | Observed median genome fraction (IQR error bars) + fitted line/curve + 2× prediction |
+| `saturation_curve.png` | Observed median genome fraction (IQR error bars) + fitted line/curve + 2× prediction; x-axis = sequencing depth (Gbp) from fastp `total_bases` |
 | `saturation_summary.tsv` | One-row TSV: `sample_id`, `observed_median_genome_fraction`, `theoretical_max_median_genome_fraction`, `predicted_median_genome_fraction_at_2x`, `saturation_rate`, `extrapolation_model`, `hq_cell_count`, `sampled_cell_count`, `sample_seed` |
 
 Contract:
@@ -358,6 +359,7 @@ Contract:
 - Extrapolation (`f` beyond 1×): fit both a through-origin linear model `y = m × f` and a saturation curve `y = a × (1 − exp(−b × f))` to the median curve.
   - If the linear fit `R² ≥ saturation_linear_r2_threshold` (data essentially unsaturated), report `extrapolation_model = linear`, `predicted@2× = m × 2`, and `theoretical_max = saturation_rate = NA` (the asymptote is unidentifiable in the linear regime).
   - Otherwise report `extrapolation_model = saturation`, `theoretical_max = a`, `predicted@2× = a × (1 − exp(−2b))`, and `saturation_rate = median@100% / a × 100`.
+- Plot x-axis: subsample fraction × fastp `total_bases` / 1e9 (Gbp); 2× prediction at twice the observed sequencing depth.
 - Y-axis semantics: median **genome fraction** (0–1 in TSV; plot as %).
 - Single sample-level job (no chunking); supports `--dry-run`.
 - Does not depend on `merge_sc_metrics` or ALLCools count sidecars.

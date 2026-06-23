@@ -564,11 +564,14 @@ def build_count_mapped_reads_chunk_command(sample_work: Path, chunk_id: str) -> 
 
 
 def build_saturation_command(args: argparse.Namespace, sample_work: Path) -> str:
+    fastp_json = sample_work / "shard_fastq" / "fastp.json"
     command = [
         sys.executable,
         str(args.saturation_script),
         "--work-path",
         str(sample_work),
+        "--fastp-json",
+        str(fastp_json),
         "--chrom-size-path",
         str(args.chrom_size_path),
         "--reads-threshold",

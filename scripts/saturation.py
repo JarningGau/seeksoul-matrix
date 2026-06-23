@@ -5,6 +5,7 @@ from __future__ import annotations
 
 import argparse
 import csv
+import json
 import math
 import random
 import statistics
@@ -93,6 +94,14 @@ def parse_args() -> argparse.Namespace:
         ),
     )
     parser.add_argument(
+        "--fastp-json",
+        default=None,
+        help=(
+            "fastp JSON report for total sequencing depth on the plot x-axis. "
+            "Default: auto-detect <work_path>/shard_fastq/fastp.json."
+        ),
+    )
+    parser.add_argument(
         "--output-dir",
         default=None,
         help="Output directory. Default: <work_path>/qc/saturation.",
@@ -103,6 +112,37 @@ def parse_args() -> argparse.Namespace:
         help="Print resolved inputs/outputs and exit without writing files.",
     )
     return parser.parse_args()
+
+
+def discover_fastp_json(work_path: Path) -> Path | None:
+    candidate = work_path / "shard_fastq" / "fastp.json"
+    return candidate if candidate.is_file() else None
+
+
+def resolve_fastp_json(work_path: Path, fastp_json: str | None) -> Path:
+    if fastp_json:
+        path = Path(fastp_json)
+        if not path.is_file():
+            raise FileNotFoundError(f"fastp JSON not found: {path}")
+        return path
+    discovered = discover_fastp_json(work_path)
+    if discovered is None:
+        raise FileNotFoundError(
+            f"fastp JSON not found; pass --fastp-json or run fastp_split under {work_path}"
+        )
+    return discovered
+
+
+def load_fastp_sequencing_gbp(fastp_json: Path) -> float:
+    data = json.loads(fastp_json.read_text(encoding="utf-8"))
+    summary = data.get("summary", {})
+    for section in ("after_filtering", "before_filtering"):
+        total_bases = summary.get(section, {}).get("total_bases")
+        if total_bases is not None:
+            bases = int(total_bases)
+            if bases > 0:
+                return bases / 1e9
+    raise ValueError(f"no total_bases found in fastp report: {fastp_json}")
 
 
 def format_optional_float(value: float | None) -> str:
@@ -354,18 +394,22 @@ def write_plot(
     predicted: float | None,
     theoretical: float | None,
     saturation_rate: float | None,
+    sequencing_gbp: float,
 ) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
     scale = 100.0
 
-    max_x = max(max(fractions), pred_fraction, 1.0)
-    fit_x = [max_x * index / 250.0 for index in range(251)]
+    x_values = [fraction * sequencing_gbp for fraction in fractions]
+    max_fraction = max(max(fractions), pred_fraction, 1.0)
+    fit_fractions = [max_fraction * index / 250.0 for index in range(251)]
+    fit_x = [fraction * sequencing_gbp for fraction in fit_fractions]
     if model == "linear":
-        fit_y = [slope * value * scale for value in fit_x]
+        fit_y = [slope * value * scale for value in fit_fractions]
         fit_label = "Fitted line (linear)"
     else:
-        fit_y = [sat_func(value, a, b) * scale for value in fit_x]
+        fit_y = [sat_func(value, a, b) * scale for value in fit_fractions]
         fit_label = "Fitted curve (saturation)"
+    pred_x = pred_fraction * sequencing_gbp
     pred_y = (predicted if predicted is not None else 0.0) * scale
     medians_pct = [value * scale for value in medians]
     yerr = [
@@ -375,7 +419,7 @@ def write_plot(
 
     fig, ax = plt.subplots(figsize=(6.8, 4.8))
     ax.errorbar(
-        fractions,
+        x_values,
         medians_pct,
         yerr=yerr,
         fmt="o-",
@@ -387,7 +431,7 @@ def write_plot(
     )
     ax.plot(fit_x, fit_y, "r--", linewidth=2, label=fit_label)
     ax.scatter(
-        [pred_fraction],
+        [pred_x],
         [pred_y],
         color="green",
         s=55,
@@ -409,7 +453,7 @@ def write_plot(
     else:
         sat_text = "NA"
     ax.set_title(f"Saturation analysis ({sample_id})\nSaturation rate: {sat_text}")
-    ax.set_xlabel("Coverage Fraction")
+    ax.set_xlabel("Sequencing (Gbp)")
     ax.set_ylabel("Median Genome Fraction (%)")
     ax.grid(True, alpha=0.35)
     ax.legend(loc="lower right")
@@ -445,6 +489,8 @@ def main() -> int:
     output_dir = Path(args.output_dir) if args.output_dir else work_path / "qc" / "saturation"
     plot_path = output_dir / "saturation_curve.png"
     summary_path = output_dir / "saturation_summary.tsv"
+    fastp_json_path = resolve_fastp_json(work_path, args.fastp_json)
+    sequencing_gbp = load_fastp_sequencing_gbp(fastp_json_path)
 
     if args.max_cells <= 0:
         raise ValueError("--max-cells must be > 0")
@@ -461,6 +507,8 @@ def main() -> int:
     print(f"[saturation] reads_threshold={args.reads_threshold}")
     print(f"[saturation] max_cells={args.max_cells}")
     print(f"[saturation] sample_seed={args.sample_seed}")
+    print(f"[saturation] fastp_json={fastp_json_path}")
+    print(f"[saturation] sequencing_gbp={sequencing_gbp:.6f}")
     print(f"[saturation] output_plot={plot_path}")
     print(f"[saturation] output_summary={summary_path}")
 
@@ -572,6 +620,7 @@ def main() -> int:
         predicted=predicted,
         theoretical=theoretical,
         saturation_rate=saturation_rate,
+        sequencing_gbp=sequencing_gbp,
     )
     row = {
         "sample_id": sample_id,
