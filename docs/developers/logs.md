@@ -1,5 +1,40 @@
 # Development log
 
+## 2026-06-23 — tune dd_met5_slurm resources (fastp 8 / bismark 16)
+
+**Task:** Scale production Slurm workflow to `bismark_parallel=16` (160G); align downstream parallel stages.
+
+**Files changed:**
+- `workflow/dd_met5_slurm.json`
+- `docs/developers/logs.md`
+
+**Summary:**
+- `bismark_parallel` 16, Slurm 16 CPU / 160G; `split_bams_cores` / `merge_fr_bams_cores` / `bam_to_allc_cores` 16.
+- Slurm mem for split/merge/allc scaled 24→16 tier (64G / 64G / 128G). `sort_threads` 8 unchanged (fastp tier).
+
+**Check performed:**
+- `make_cmd.py --workflow-config workflow/dd_met5_slurm.json --stage all --runner slurm --dry-run`
+
+**Status:** done
+
+## 2026-06-23 — tune dd_met5_slurm resources (fastp 8 / bismark 24)
+
+**Task:** Update production Slurm workflow `workflow/dd_met5_slurm.json` for 8-way fastp demux and 24-thread Bismark.
+
+**Files changed:**
+- `workflow/dd_met5_slurm.json`
+- `docs/developers/logs.md`
+
+**Summary:**
+- `fastp_threads` / `number_of_split_parts` remain 8; demux/regroup Slurm jobs 1 CPU each (parallelism via 8 chunk / 3 prefix jobs).
+- `bismark_parallel` 24; `split_bams_cores` / `merge_fr_bams_cores` / `bam_to_allc_cores` 24; `sort_threads` 8 (fastp tier).
+- Slurm mem scaled from prior 8-core baselines and local bismark memtest (~8.7 GB/bowtie2 × 24 ≈ 220G).
+
+**Check performed:**
+- `make_cmd.py --workflow-config workflow/dd_met5_slurm.json --stage all --runner slurm --dry-run` → `--bismark-parallel 24`, `--sort-threads 8`, `--cores 24`.
+
+**Status:** done
+
 ## 2026-06-23 — eleven-stage HPC end-to-end (Slurm `--stage all`, prefix chunks)
 
 **Task:** Validate full methylation-only pipeline with barcode-prefix analysis chunks on HPC via Slurm DAG submit (`fastp_split` → `saturation`).
