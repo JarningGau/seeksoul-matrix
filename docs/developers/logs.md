@@ -1,5 +1,31 @@
 # Development log
 
+## 2026-06-23 — gexcb path local validation (split → merge → allc)
+
+**Task:** Validate RNA-barcode (`gexcb`) workflow path on `work/dd-met5-example` using intersection test barcodes.
+
+**Files changed:**
+- `workflow/dd_met5_gexcb_test.json`
+- `data/gexcb_test.txt` (22 barcodes: intersection of `data/gexcb.txt` and top-50 from `merged_barcode_counts.csv`)
+- `docs/developers/logs.md`
+
+**Summary:**
+- Added `workflow/dd_met5_gexcb_test.json` with `gexcb: data/gexcb_test.txt` (no `expected_cell_num` / `force_cell_num`).
+- gexcb stage sequence: `05_split_bams` → `06_merge_fr_bams` → `07_bam_to_allc` (skips count/estimate).
+- Ran stages on existing `work/dd-met5-example` align outputs; cleaned stale `split_bams/` before re-run (prior methylation-only run left ~3800 per-chunk BAMs that `merge_fr_bams` would otherwise glob).
+
+**Checks performed:**
+- `pixi run python scripts/make_cmd.py --workflow-config workflow/dd_met5_gexcb_test.json --stage split_bams --dry-run`
+- `bash work/dd-met5-example/commands/05_split_bams.sh` → `cells_with_reads=22` per chunk/strand
+- `bash work/dd-met5-example/commands/06_merge_fr_bams.sh` → `merged_bams=22` per chunk
+- `bash work/dd-met5-example/commands/07_bam_to_allc.sh` → `allc_files=22` per chunk
+- Barcode list matches `data/gexcb_test.txt` (`0001_merge_filtered_barcode`)
+- `pixi run python scripts/make_cmd.py --workflow-config workflow/dd_met5_gexcb_test.json --stage all --dry-run`
+
+**Status:** done
+
+**Notes:** First split attempt without cleaning stale outputs merged 3805 barcodes; re-run after `rm -rf split_bams/* allcools` gave correct 22-cell result. Full gexcb `--stage all` from raw FASTQ not run (reuses prior align BAMs). Slurm gexcb path not tested.
+
 ## 2026-06-23 — HPC nine-stage end-to-end (Slurm `--stage all`)
 
 **Task:** Validate full methylation-only pipeline on HPC via Slurm DAG submit after PATH fixes for Bismark/bowtie2 and ALLCools/tabix.

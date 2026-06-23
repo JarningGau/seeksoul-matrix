@@ -1,0 +1,65 @@
+{
+    "runner": "local",
+    "stage": "split_bams",
+    "sample_id": "dd-met5-example",
+    "r1": "data/test_R1.fastq.gz",
+    "r2": "data/test_R2.fastq.gz",
+    "work_root": "work",
+    "fastp_threads": 2,
+    "number_of_split_parts": 2,
+    "fastp_bin": "fastp",
+    "barcode_whitelist": "whitelist/DD-MET5/U3CB_methylation.txt.gz",
+    "barcode_hamming_distance": 1,
+    "gzip_level": 1,
+    "filter_ch": 2,
+    "bismark_ref": "/mnt/wd-4t/resource/mouse-reference-GRCm39/fasta/",
+    "bismark_parallel": 8,
+    "bismark_max_insert": 1000,
+    "bismark_bin": "bismark",
+    "sort_threads": 6,
+    "samtools_bin": "samtools",
+    "gexcb": "data/gexcb_test.txt",
+    "split_bams_cores": 8,
+    "merge_fr_bams_cores": 8,
+    "genome_fa": "/mnt/wd-4t/resource/mouse-reference-GRCm39/fasta/genome.fa",
+    "chrom_size_path": "/mnt/wd-4t/resource/mouse-reference-GRCm39/bed/chr_nochrM.bed",
+    "bam_to_allc_cores": 8,
+    "allcools_tag": "UR",
+    "slurm": {
+        "fastp_split": {
+            "partition": "amd-ep2",
+            "mem": "16G",
+            "cpus_per_task": 8
+        },
+        "demux_extract_bc": {
+            "partition": "amd-ep2",
+            "mem": "16G",
+            "cpus_per_task": 8
+        },
+        "bismark_align": {
+            "partition": "amd-ep2",
+            "mem": "80G",
+            "cpus_per_task": 8
+        },
+        "bam_sort": {
+            "partition": "amd-ep2",
+            "mem": "16G",
+            "cpus_per_task": 8
+        },
+        "split_bams": {
+            "partition": "amd-ep2",
+            "mem": "32G",
+            "cpus_per_task": 8
+        },
+        "merge_fr_bams": {
+            "partition": "amd-ep2",
+            "mem": "32G",
+            "cpus_per_task": 8
+        },
+        "bam_to_allc": {
+            "partition": "amd-ep2",
+            "mem": "64G",
+            "cpus_per_task": 8
+        }
+    }
+}
