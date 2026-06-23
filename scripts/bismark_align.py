@@ -4,6 +4,7 @@
 from __future__ import annotations
 
 import argparse
+import os
 import shlex
 import subprocess
 import sys
@@ -265,7 +266,11 @@ def align_chunk(
         temp_dir.mkdir(parents=True, exist_ok=True)
         log_path = output_dir / f"bismark_{chunk.chunk_id}_{strand}.log"
         with log_path.open("w", encoding="utf-8") as log_handle:
-            subprocess.run(cmd, check=True, stdout=log_handle, stderr=subprocess.STDOUT)
+            env = os.environ.copy()
+            env["PATH"] = os.path.dirname(bismark_bin) + os.pathsep + env.get("PATH", "")
+            subprocess.run(
+                cmd, check=True, stdout=log_handle, stderr=subprocess.STDOUT, env=env
+            )
 
 
 def main() -> int:

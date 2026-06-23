@@ -1,5 +1,25 @@
 # Development log
 
+## 2026-06-23 — bismark_align PATH for Slurm compute nodes
+
+**Task:** Fix HPC `bismark_align` failure: Bismark found but internal `bowtie2 --version` returned 32512 (command not found) on Slurm compute nodes without pixi PATH.
+
+**Files changed:**
+- `scripts/bismark_align.py`
+- `docs/developers/logs.md`
+
+**Summary:**
+- Prepend `bismark_bin` directory to `PATH` in the subprocess env when invoking Bismark so `bowtie2` (and `perl` via shebang) resolve on compute nodes that do not activate pixi.
+
+**Checks performed:**
+- `pixi run python scripts/bismark_align.py --help`
+- `pixi run bismark-align-dry-run`
+- HPC manual validation on `work/test` (user-reported; Slurm `03_bismark_align_0001.sbatch`)
+
+**Status:** done
+
+**Notes:** Slurm sbatch scripts do not need a separate `export PATH=...` line when this fix is present; optional sbatch PATH export on HPC was redundant with the subprocess env change.
+
 ## 2026-06-23 — Slurm upfront chunk planning for `--stage all`
 
 **Task:** Fix `ValueError: no demux align inputs found for bismark script generation` when running fresh HPC `--stage all --submit` before prior-stage outputs exist.
