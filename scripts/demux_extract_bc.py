@@ -383,6 +383,61 @@ def output_paths(prefix: str | Path) -> dict[str, Path]:
     }
 
 
+def sub_shard_paths(output_prefix: Path, barcode_prefix: str) -> dict[str, Path]:
+    """Per-prefix sub-shard paths under demux/shards/<readchunk>__<prefix>.*."""
+    shard_dir = output_prefix.parent / "shards"
+    stem = f"{output_prefix.name}__{barcode_prefix}"
+    return {
+        "forward_1": shard_dir / f"{stem}.forward_1.fq.gz",
+        "forward_2": shard_dir / f"{stem}.forward_2.fq.gz",
+        "reverse_1": shard_dir / f"{stem}.reverse_1.fq.gz",
+        "reverse_2": shard_dir / f"{stem}.reverse_2.fq.gz",
+    }
+
+
+class PrefixShardWriter:
+    """Dynamic gzip handles for barcode-prefix sharding (SeekSoul split_fastq)."""
+
+    def __init__(
+        self,
+        output_prefix: Path,
+        prefix_bases: int,
+        gzip_level: int,
+    ) -> None:
+        self.output_prefix = Path(output_prefix)
+        self.prefix_bases = prefix_bases
+        self.gzip_level = gzip_level
+        self.shard_dir = self.output_prefix.parent / "shards"
+        self._handles: dict[tuple[str, str], tuple[TextIO, TextIO]] = {}
+
+    def get_pair(self, barcode: str, chain: str) -> tuple[TextIO, TextIO]:
+        prefix = barcode[: self.prefix_bases]
+        key = (prefix, chain)
+        if key not in self._handles:
+            paths = sub_shard_paths(self.output_prefix, prefix)
+            self.shard_dir.mkdir(parents=True, exist_ok=True)
+            out1 = gzip.open(
+                paths[f"{chain}_1"],
+                "wt",
+                encoding="utf-8",
+                compresslevel=self.gzip_level,
+            )
+            out2 = gzip.open(
+                paths[f"{chain}_2"],
+                "wt",
+                encoding="utf-8",
+                compresslevel=self.gzip_level,
+            )
+            self._handles[key] = (out1, out2)
+        return self._handles[key]
+
+    def close(self) -> None:
+        for out1, out2 in self._handles.values():
+            out1.close()
+            out2.close()
+        self._handles.clear()
+
+
 def load_fastp_pair_total(fastp_json: Path) -> int:
     data = json.loads(fastp_json.read_text(encoding="utf-8"))
     read1 = data.get("read1_after_filtering", {}).get("total_reads")
@@ -487,6 +542,16 @@ def parse_args() -> argparse.Namespace:
         ),
     )
     parser.add_argument(
+        "--split-fastq-prefix-bases",
+        type=int,
+        default=0,
+        help=(
+            "Split demux FASTQ by first N bases of corrected barcode (0=no split). "
+            "Maps to SeekSoul split_fastq. "
+            "Writes sub-shards under demux/shards/<readchunk>__<prefix>.*."
+        ),
+    )
+    parser.add_argument(
         "--dry-run",
         action="store_true",
         help="Print output paths without reading FASTQ.",
@@ -501,8 +566,15 @@ def main() -> int:
     print(f"[demux_extract_bc] input_r1={args.r1}")
     print(f"[demux_extract_bc] input_r2={args.r2}")
     print(f"[demux_extract_bc] filter_ch={args.filter_ch}")
+    print(f"[demux_extract_bc] split_fastq_prefix_bases={args.split_fastq_prefix_bases}")
     for label, path in paths.items():
         print(f"[demux_extract_bc] output_{label}={path}")
+    if args.split_fastq_prefix_bases > 0:
+        shard_dir = Path(args.output_prefix).parent / "shards"
+        print(
+            f"[demux_extract_bc] output_shards={shard_dir}/"
+            f"{Path(args.output_prefix).name}__<prefix>.{{forward,reverse}}_{{1,2}}.fq.gz"
+        )
 
     if args.dry_run:
         return 0
@@ -519,116 +591,153 @@ def main() -> int:
     seen_umi: set[tuple[str, str]] = set()
     chunk_id = Path(args.output_prefix).name
     total_pairs = resolve_progress_total(args)
+    use_prefix_split = args.split_fastq_prefix_bases > 0
+    prefix_writer = (
+        PrefixShardWriter(
+            Path(args.output_prefix), args.split_fastq_prefix_bases, args.gzip_level
+        )
+        if use_prefix_split
+        else None
+    )
 
     t0 = time.monotonic()
-    with (
-        open_text(args.r1, "r") as r1_in,
-        open_text(args.r2, "r") as r2_in,
-        gzip.open(paths["forward_1"], "wt", encoding="utf-8", compresslevel=args.gzip_level) as fwd1_out,
-        gzip.open(paths["forward_2"], "wt", encoding="utf-8", compresslevel=args.gzip_level) as fwd2_out,
-        gzip.open(paths["reverse_1"], "wt", encoding="utf-8", compresslevel=args.gzip_level) as rev1_out,
-        gzip.open(paths["reverse_2"], "wt", encoding="utf-8", compresslevel=args.gzip_level) as rev2_out,
-        open(paths["linker"], "w", encoding="utf-8") as linker_out,
-        tqdm(
-            total=total_pairs,
-            desc=f"demux {chunk_id}",
-            unit="pair",
-            unit_scale=True,
-            file=sys.stderr,
-        ) as progress,
-    ):
-        linker_out.write("CR\tUB\tC\tT\n")
-        for rec in zip_longest(fastq_iter(r1_in), fastq_iter(r2_in)):
-            if rec[0] is None or rec[1] is None:
-                raise ValueError("R1/R2 read count mismatch")
-            h1, s1, p1, q1 = rec[0]
-            h2, s2, p2, q2 = rec[1]
-            stats["total"] += 1
-            progress.update(1)
-            if has_17lme(s1):
-                stats["num_17lme"] += 1
+    fwd1_out = fwd2_out = rev1_out = rev2_out = None
+    if not use_prefix_split:
+        fwd1_out = gzip.open(
+            paths["forward_1"], "wt", encoding="utf-8", compresslevel=args.gzip_level
+        )
+        fwd2_out = gzip.open(
+            paths["forward_2"], "wt", encoding="utf-8", compresslevel=args.gzip_level
+        )
+        rev1_out = gzip.open(
+            paths["reverse_1"], "wt", encoding="utf-8", compresslevel=args.gzip_level
+        )
+        rev2_out = gzip.open(
+            paths["reverse_2"], "wt", encoding="utf-8", compresslevel=args.gzip_level
+        )
 
-            start_pos = 0
-            observed_cb = ""
-            umi = ""
-            corrected_cb: str | None = None
-            cb_alt = ""
-            cb_status = "not_found"
+    try:
+        with (
+            open_text(args.r1, "r") as r1_in,
+            open_text(args.r2, "r") as r2_in,
+            open(paths["linker"], "w", encoding="utf-8") as linker_out,
+            tqdm(
+                total=total_pairs,
+                desc=f"demux {chunk_id}",
+                unit="pair",
+                unit_scale=True,
+                file=sys.stderr,
+            ) as progress,
+        ):
+            linker_out.write("CR\tUB\tC\tT\n")
+            for rec in zip_longest(fastq_iter(r1_in), fastq_iter(r2_in)):
+                if rec[0] is None or rec[1] is None:
+                    raise ValueError("R1/R2 read count mismatch")
+                h1, s1, p1, q1 = rec[0]
+                h2, s2, p2, q2 = rec[1]
+                stats["total"] += 1
+                progress.update(1)
+                if has_17lme(s1):
+                    stats["num_17lme"] += 1
 
-            for code, length in structure:
-                end_pos = start_pos + length
-                seq = s1[start_pos:end_pos]
-                if code == "B":
-                    observed_cb = seq.upper()
-                    corrected_cb, cb_alt, cb_status = match_barcode(
-                        observed_cb, whitelist, args.barcode_hamming_distance
-                    )
-                    if corrected_cb is None:
-                        break
-                elif code == "U":
-                    umi = seq.upper()
-                start_pos = end_pos
+                start_pos = 0
+                observed_cb = ""
+                umi = ""
+                corrected_cb: str | None = None
+                cb_alt = ""
+                cb_status = "not_found"
 
-            if corrected_cb is None:
-                if cb_status == "ambiguous":
-                    stats["B_ambiguous"] += 1
-                else:
-                    stats["B_rejected"] += 1
-                continue
-            if cb_status == "corrected":
-                stats["B_corrected"] += 1
-            elif cb_status == "exact":
-                stats["B_exact"] += 1
+                for code, length in structure:
+                    end_pos = start_pos + length
+                    seq = s1[start_pos:end_pos]
+                    if code == "B":
+                        observed_cb = seq.upper()
+                        corrected_cb, cb_alt, cb_status = match_barcode(
+                            observed_cb, whitelist, args.barcode_hamming_distance
+                        )
+                        if corrected_cb is None:
+                            break
+                    elif code == "U":
+                        umi = seq.upper()
+                    start_pos = end_pos
 
-            ct_counts = extract_ct_counts(s1, q1)
-            if ct_counts is not None:
-                stats["ct_reads"] += 1
-                c_count, t_count = ct_counts
-                umi_key = (corrected_cb, umi)
-                if umi_key not in seen_umi:
-                    seen_umi.add(umi_key)
-                    linker_out.write(
-                        f"{corrected_cb}\t{umi}\t{c_count}\t{t_count}\n"
-                    )
-                    stats["ct_umi_dedup"] += 1
-                    ct_c_total += c_count
-                    ct_t_total += t_count
+                if corrected_cb is None:
+                    if cb_status == "ambiguous":
+                        stats["B_ambiguous"] += 1
+                    else:
+                        stats["B_rejected"] += 1
+                    continue
+                if cb_status == "corrected":
+                    stats["B_corrected"] += 1
+                elif cb_status == "exact":
+                    stats["B_exact"] += 1
 
-            chain = determine_chain_direction(s1)
-            if chain == "unknown":
-                stats["unknown_chain"] += 1
-                continue
+                ct_counts = extract_ct_counts(s1, q1)
+                if ct_counts is not None:
+                    stats["ct_reads"] += 1
+                    c_count, t_count = ct_counts
+                    umi_key = (corrected_cb, umi)
+                    if umi_key not in seen_umi:
+                        seen_umi.add(umi_key)
+                        linker_out.write(
+                            f"{corrected_cb}\t{umi}\t{c_count}\t{t_count}\n"
+                        )
+                        stats["ct_umi_dedup"] += 1
+                        ct_c_total += c_count
+                        ct_t_total += t_count
 
-            r1 = FastqRead(h1[1:].split()[0], s1, q1)
-            r2 = FastqRead(h2[1:].split()[0], s2, q2)
-            _, r1, r2 = adapter_filter.filter(r1, r2)
+                chain = determine_chain_direction(s1)
+                if chain == "unknown":
+                    stats["unknown_chain"] += 1
+                    continue
 
-            if len(r1.sequence) < R1_MINLEN or len(r2.sequence) < R2_MINLEN:
-                stats["too_short"] += 1
-                continue
+                r1 = FastqRead(h1[1:].split()[0], s1, q1)
+                r2 = FastqRead(h2[1:].split()[0], s2, q2)
+                _, r1, r2 = adapter_filter.filter(r1, r2)
 
-            if should_filter_read_ch_pattern(
-                r1.sequence, r2.sequence, chain, args.filter_ch
-            ):
-                stats["chimeric_filtered"] += 1
+                if len(r1.sequence) < R1_MINLEN or len(r2.sequence) < R2_MINLEN:
+                    stats["too_short"] += 1
+                    continue
+
+                if should_filter_read_ch_pattern(
+                    r1.sequence, r2.sequence, chain, args.filter_ch
+                ):
+                    stats["chimeric_filtered"] += 1
+                    if chain == "forward":
+                        stats["forward_chimeric"] += 1
+                    else:
+                        stats["reverse_chimeric"] += 1
+                    continue
+
+                stats["valid"] += 1
                 if chain == "forward":
-                    stats["forward_chimeric"] += 1
+                    stats["forward"] += 1
                 else:
-                    stats["reverse_chimeric"] += 1
-                continue
+                    stats["reverse"] += 1
 
-            stats["valid"] += 1
-            if chain == "forward":
-                stats["forward"] += 1
-                out1, out2 = fwd1_out, fwd2_out
-            else:
-                stats["reverse"] += 1
-                out1, out2 = rev1_out, rev2_out
+                if use_prefix_split:
+                    assert prefix_writer is not None
+                    out1, out2 = prefix_writer.get_pair(corrected_cb, chain)
+                elif chain == "forward":
+                    out1, out2 = fwd1_out, fwd2_out
+                else:
+                    out1, out2 = rev1_out, rev2_out
 
-            new_h1 = format_read_name(h1, corrected_cb, umi, chain, cb_alt)
-            new_h2 = format_read_name(h2, corrected_cb, umi, chain, cb_alt)
-            out1.write(f"{new_h1}\n{r1.sequence}\n{p1}\n{r1.qualities}\n")
-            out2.write(f"{new_h2}\n{r2.sequence}\n{p2}\n{r2.qualities}\n")
+                new_h1 = format_read_name(h1, corrected_cb, umi, chain, cb_alt)
+                new_h2 = format_read_name(h2, corrected_cb, umi, chain, cb_alt)
+                out1.write(f"{new_h1}\n{r1.sequence}\n{p1}\n{r1.qualities}\n")
+                out2.write(f"{new_h2}\n{r2.sequence}\n{p2}\n{r2.qualities}\n")
+    finally:
+        if prefix_writer is not None:
+            prefix_writer.close()
+        if fwd1_out is not None:
+            fwd1_out.close()
+        if fwd2_out is not None:
+            fwd2_out.close()
+        if rev1_out is not None:
+            rev1_out.close()
+        if rev2_out is not None:
+            rev2_out.close()
 
     stats_payload = build_stats_payload(
         chunk_id=chunk_id,

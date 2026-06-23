@@ -16,6 +16,7 @@ import workflow_input_checks as wic
 BASE_STAGE_SEQUENCE = [
     "fastp_split",
     "demux_extract_bc",
+    "regroup_shards",
     "bismark_align",
     "bam_sort",
 ]
@@ -34,6 +35,7 @@ SLURM_NEST_STAGE_KEYS = frozenset(ALL_STAGE_NAMES)
 STAGE_REQUIRED_FIELDS = {
     "fastp_split": ["r1", "r2", "number_of_split_parts"],
     "demux_extract_bc": ["barcode_whitelist"],
+    "regroup_shards": [],
     "bismark_align": ["bismark_ref"],
     "bam_sort": [],
     "count_mapped_reads": [],
@@ -45,6 +47,7 @@ STAGE_REQUIRED_FIELDS = {
 }
 DEFAULT_BARCODE_WHITELIST = "whitelist/DD-MET5/U3CB_methylation.txt.gz"
 DEFAULT_EXPECTED_CELL_NUM = 3000
+DEFAULT_SPLIT_FASTQ_PREFIX_BASES = 1
 
 
 def build_stage_sequence(settings: dict) -> list[str]:
@@ -142,6 +145,14 @@ def parse_args() -> argparse.Namespace:
         type=int,
         help=(
             "CH chimeric filter threshold for demux (0=disabled). Default: 2."
+        ),
+    )
+    parser.add_argument(
+        "--split-fastq-prefix-bases",
+        type=int,
+        help=(
+            "Barcode prefix length for demux sharding (maps to SeekSoul split_fastq). "
+            f"Default: {DEFAULT_SPLIT_FASTQ_PREFIX_BASES}."
         ),
     )
     parser.add_argument(
@@ -299,24 +310,49 @@ def build_demux_chunk_command(
     args: argparse.Namespace, r1_path: Path, r2_path: Path, out_prefix: Path
 ) -> str:
     fastp_json = r1_path.parent / "fastp.json"
+    command = [
+        sys.executable,
+        "scripts/demux_extract_bc.py",
+        str(r1_path),
+        str(r2_path),
+        "--barcode-whitelist",
+        args.barcode_whitelist,
+        "--output-prefix",
+        str(out_prefix),
+        "--barcode-hamming-distance",
+        str(args.barcode_hamming_distance),
+        "--gzip-level",
+        str(args.gzip_level),
+        "--filter-ch",
+        str(args.filter_ch),
+        "--fastp-json",
+        str(fastp_json),
+        "--split-fastq-prefix-bases",
+        str(args.split_fastq_prefix_bases),
+    ]
+    return quoted(command)
+
+
+def build_regroup_work_command(sample_work: Path) -> str:
     return quoted(
         [
             sys.executable,
-            "scripts/demux_extract_bc.py",
-            str(r1_path),
-            str(r2_path),
-            "--barcode-whitelist",
-            args.barcode_whitelist,
-            "--output-prefix",
-            str(out_prefix),
-            "--barcode-hamming-distance",
-            str(args.barcode_hamming_distance),
-            "--gzip-level",
-            str(args.gzip_level),
-            "--filter-ch",
-            str(args.filter_ch),
-            "--fastp-json",
-            str(fastp_json),
+            "scripts/regroup_shards.py",
+            "--work-path",
+            str(sample_work),
+        ]
+    )
+
+
+def build_regroup_prefix_command(sample_work: Path, prefix: str) -> str:
+    return quoted(
+        [
+            sys.executable,
+            "scripts/regroup_shards.py",
+            "--work-path",
+            str(sample_work),
+            "--prefix",
+            prefix,
         ]
     )
 
@@ -412,6 +448,34 @@ def resolve_slurm_chunks(
             f"no {label} found; pass --number-of-split-parts for upfront Slurm script generation"
         )
     return plan(number_of_split_parts)
+
+
+def resolve_prefix_chunks(
+    *,
+    discover: callable,
+    plan_by_prefix: callable,
+    base_dir: Path,
+    settings: dict,
+    label: str,
+) -> list:
+    chunks = discover()
+    if chunks:
+        return chunks
+    prefix_bases = settings.get("split_fastq_prefix_bases")
+    whitelist = settings.get("barcode_whitelist")
+    if prefix_bases is None or int(prefix_bases) <= 0:
+        raise ValueError(
+            f"no {label} found; set split_fastq_prefix_bases and barcode_whitelist "
+            "for upfront Slurm generation"
+        )
+    if not whitelist:
+        raise ValueError(
+            f"no {label} found; barcode_whitelist is required for prefix chunk planning"
+        )
+    prefixes = wic.plan_prefix_chunks(
+        wic.resolve_config_path(whitelist), int(prefix_bases)
+    )
+    return plan_by_prefix(base_dir, prefixes)
 
 
 def build_bam_sort_work_command(args: argparse.Namespace, sample_work: Path) -> str:
@@ -704,6 +768,7 @@ def build_demux_local_batch_command(args: argparse.Namespace, sample_work: Path)
         f"--barcode-hamming-distance {int(args.barcode_hamming_distance)} "
         f"--gzip-level {int(args.gzip_level)} "
         f"--filter-ch {int(args.filter_ch)} "
+        f"--split-fastq-prefix-bases {int(args.split_fastq_prefix_bases)} "
         '--fastp-json "$fastp_json"\n'
         "done\n"
         "\n"
@@ -787,6 +852,13 @@ def validate_inputs_for_stage(
             for _chunk_id, r1_path, r2_path in shards:
                 wic.require_file(f"shard_fastq/{r1_path.name}", r1_path)
                 wic.require_file(f"shard_fastq/{r2_path.name}", r2_path)
+    elif stage == "regroup_shards":
+        if int(settings.get("split_fastq_prefix_bases") or 0) <= 0:
+            return
+        demux_dir = sample_work / "demux"
+        subshards = wic.discover_demux_subshards(demux_dir)
+        if not subshards:
+            raise ValueError(f"no demux sub-shards found under {demux_dir}/shards")
     elif stage == "bismark_align":
         wic.require_bismark_ref(wic.resolve_config_path(settings["bismark_ref"]))
         wic.require_optional_executable_path("bismark_bin", settings["bismark_bin"])
@@ -927,6 +999,9 @@ def resolve_settings(args: argparse.Namespace) -> dict:
         ),
         "gzip_level": pick(args.gzip_level, cfg.get("gzip_level")),
         "filter_ch": pick(args.filter_ch, cfg.get("filter_ch")),
+        "split_fastq_prefix_bases": pick(
+            args.split_fastq_prefix_bases, cfg.get("split_fastq_prefix_bases")
+        ),
         "bismark_ref": pick(args.bismark_ref, cfg.get("bismark_ref")),
         "bismark_parallel": pick(args.bismark_parallel, cfg.get("bismark_parallel")),
         "bismark_max_insert": pick(
@@ -973,10 +1048,19 @@ def resolve_settings(args: argparse.Namespace) -> dict:
     settings["fastp_bin"] = normalize_executable_setting(
         settings["fastp_bin"], "fastp"
     )
-    if stage in ("demux_extract_bc", "all"):
+    if stage in ("demux_extract_bc", "regroup_shards", "all"):
         settings["barcode_whitelist"] = (
             settings["barcode_whitelist"] or DEFAULT_BARCODE_WHITELIST
         )
+    if stage in ("demux_extract_bc", "regroup_shards", "bismark_align", "all"):
+        settings["split_fastq_prefix_bases"] = int(
+            settings["split_fastq_prefix_bases"]
+            if settings["split_fastq_prefix_bases"] is not None
+            else DEFAULT_SPLIT_FASTQ_PREFIX_BASES
+        )
+        if settings["split_fastq_prefix_bases"] < 0:
+            raise ValueError("split_fastq_prefix_bases must be >= 0")
+    if stage in ("demux_extract_bc", "all"):
         settings["barcode_hamming_distance"] = int(
             settings["barcode_hamming_distance"] or 1
         )
@@ -1146,28 +1230,54 @@ def driver_scripts_for_stage(
     *,
     runner: str,
     stage_sequence: list[str],
+    settings: dict | None = None,
 ) -> list[Path]:
     prefix = stage_prefix_map(stage_sequence)[stage_name]
     if stage_name == "demux_extract_bc":
         if runner == "local":
-            return [script for script in scripts if script.name == "02_demux_extract_bc.sh"]
+            return [
+                script
+                for script in scripts
+                if script.name == f"{prefix}_demux_extract_bc.sh"
+            ]
         return [script for script in scripts if script.suffix == ".sbatch"]
-    if stage_name == "bismark_align":
+    if stage_name == "regroup_shards":
         if runner == "local":
-            return [script for script in scripts if script.name == "03_bismark_align.sh"]
+            return [
+                script
+                for script in scripts
+                if script.name == f"{prefix}_regroup_shards.sh"
+            ]
         return [
             script
             for script in scripts
-            if script.name.startswith("03_bismark_align_")
+            if script.name.startswith(f"{prefix}_regroup_shards_")
+            and script.suffix == ".sbatch"
+        ]
+    if stage_name == "bismark_align":
+        if runner == "local":
+            return [
+                script
+                for script in scripts
+                if script.name == f"{prefix}_bismark_align.sh"
+            ]
+        return [
+            script
+            for script in scripts
+            if script.name.startswith(f"{prefix}_bismark_align_")
             and script.suffix == ".sbatch"
         ]
     if stage_name == "bam_sort":
         if runner == "local":
-            return [script for script in scripts if script.name == "04_bam_sort.sh"]
+            return [
+                script
+                for script in scripts
+                if script.name == f"{prefix}_bam_sort.sh"
+            ]
         return [
             script
             for script in scripts
-            if script.name.startswith("04_bam_sort_")
+            if script.name.startswith(f"{prefix}_bam_sort_")
             and script.suffix == ".sbatch"
         ]
     if stage_name == "count_mapped_reads":
@@ -1302,6 +1412,7 @@ def generate_slurm_driver_script(
         'prev_stage_deps=""',
         "",
     ]
+    scripts_by_stage = dict(stage_scripts)
     for stage_name, scripts in stage_scripts:
         runnable = driver_scripts_for_stage(
             stage_name, scripts, runner="slurm", stage_sequence=stage_sequence
@@ -1310,13 +1421,16 @@ def generate_slurm_driver_script(
             continue
         lines.append(f'echo "[run.sbatch] stage={stage_name}"')
         if stage_name == "demux_extract_bc":
+            demux_prefix = stage_prefix_map(stage_sequence)["demux_extract_bc"]
             chunk_scripts = [
                 script
                 for script in runnable
-                if script.name.startswith("02_demux_extract_bc_")
+                if script.name.startswith(f"{demux_prefix}_demux_extract_bc_")
             ]
             aggregate_scripts = [
-                script for script in runnable if script.name.startswith("02_aggregate_")
+                script
+                for script in runnable
+                if script.name.startswith(f"{demux_prefix}_aggregate_")
             ]
             chunk_job_vars: list[str] = []
             for index, script_path in enumerate(chunk_scripts):
@@ -1328,10 +1442,29 @@ def generate_slurm_driver_script(
             if chunk_job_vars:
                 deps_join = " ".join(f"${var_name}" for var_name in chunk_job_vars)
                 lines.append(f'chunk_deps="$(join_deps {deps_join})"')
+                post_demux_job_vars: list[str] = []
                 for script_path in aggregate_scripts:
+                    var_name = f"jid_demux_agg_{len(post_demux_job_vars)}"
                     lines.append(
-                        f'prev_stage_deps="$(submit_with_dep "$SCRIPT_DIR/{script_path.name}" "$chunk_deps")"'
+                        f'{var_name}="$(submit_with_dep "$SCRIPT_DIR/{script_path.name}" "$chunk_deps")"'
                     )
+                    post_demux_job_vars.append(var_name)
+                regroup_scripts = driver_scripts_for_stage(
+                    "regroup_shards",
+                    scripts_by_stage.get("regroup_shards", []),
+                    runner="slurm",
+                    stage_sequence=stage_sequence,
+                )
+                for index, script_path in enumerate(regroup_scripts):
+                    var_name = f"jid_regroup_{index}"
+                    lines.append(
+                        f'{var_name}="$(submit_with_dep "$SCRIPT_DIR/{script_path.name}" "$chunk_deps")"'
+                    )
+                    post_demux_job_vars.append(var_name)
+                deps_join = " ".join(f"${var_name}" for var_name in post_demux_job_vars)
+                lines.append(f'prev_stage_deps="$(join_deps {deps_join})"')
+            continue
+        if stage_name == "regroup_shards":
             continue
         job_vars: list[str] = []
         for index, script_path in enumerate(runnable):
@@ -1457,7 +1590,7 @@ def main() -> int:
 
     generated_scripts: list[Path] = []
     if settings["stage"] == "fastp_split":
-        base_name = "01_fastp_split"
+        base_name = f"{stage_prefix_map(settings['_stage_sequence'])['fastp_split']}_fastp_split"
         command_args = argparse.Namespace(
             r1=settings["r1"],
             r2=settings["r2"],
@@ -1499,10 +1632,12 @@ def main() -> int:
             barcode_hamming_distance=settings["barcode_hamming_distance"],
             gzip_level=settings["gzip_level"],
             filter_ch=settings["filter_ch"],
+            split_fastq_prefix_bases=settings["split_fastq_prefix_bases"],
         )
         demux_dir = sample_work / "demux"
+        demux_prefix = stage_prefix_map(settings["_stage_sequence"])["demux_extract_bc"]
         if settings["runner"] == "local":
-            script_path = command_dir / "02_demux_extract_bc.sh"
+            script_path = command_dir / f"{demux_prefix}_demux_extract_bc.sh"
             command = build_demux_local_batch_command(command_args, sample_work)
             print(f"[make_cmd] runner={settings['runner']}")
             print(f"[make_cmd] stage={settings['stage']}")
@@ -1526,7 +1661,7 @@ def main() -> int:
             print(f"[make_cmd] sample_id={settings['sample_id']}")
             print(f"[make_cmd] chunk_count={len(chunks)}")
             for chunk_id, r1_path, r2_path, out_prefix in chunks:
-                base_name = f"02_demux_extract_bc_{chunk_id}"
+                base_name = f"{demux_prefix}_demux_extract_bc_{chunk_id}"
                 script_path = command_dir / f"{base_name}.sbatch"
                 command = build_demux_chunk_command(
                     command_args, r1_path, r2_path, out_prefix
@@ -1551,7 +1686,7 @@ def main() -> int:
                     generate_slurm_script(command, script_path, log_dir, slurm_args)
                 generated_scripts.append(script_path)
 
-            aggregate_script = command_dir / "02_aggregate_ct_qc.sbatch"
+            aggregate_script = command_dir / f"{demux_prefix}_aggregate_ct_qc.sbatch"
             aggregate_command = build_aggregate_ct_command(demux_dir)
             aggregate_output = settings["slurm_output"].replace(
                 "%x", f"seeksoul_aggregate_ct_{settings['sample_id']}"
@@ -1573,7 +1708,7 @@ def main() -> int:
                 generate_slurm_script(
                     aggregate_command, aggregate_script, log_dir, slurm_args
                 )
-                submit_script_path = command_dir / "02_demux_extract_bc_submit.sh"
+                submit_script_path = command_dir / f"{demux_prefix}_demux_extract_bc_submit.sh"
                 generate_local_script(
                     build_demux_slurm_submit_command(sample_work),
                     submit_script_path,
@@ -1582,6 +1717,55 @@ def main() -> int:
                 generated_scripts.append(submit_script_path)
             else:
                 generated_scripts.append(aggregate_script)
+    elif settings["stage"] == "regroup_shards":
+        regroup_prefix = stage_prefix_map(settings["_stage_sequence"])["regroup_shards"]
+        if settings["runner"] == "local":
+            script_path = command_dir / f"{regroup_prefix}_regroup_shards.sh"
+            command = build_regroup_work_command(sample_work)
+            print(f"[make_cmd] runner={settings['runner']}")
+            print(f"[make_cmd] stage={settings['stage']}")
+            print(f"[make_cmd] sample_id={settings['sample_id']}")
+            print(f"[make_cmd] script={script_path}")
+            print(f"[make_cmd] command={command}")
+            if settings["dry_run"]:
+                return 0
+            generate_local_script(command, script_path)
+            generated_scripts.append(script_path)
+        else:
+            prefixes = resolve_prefix_chunks(
+                discover=lambda: list(wic.discover_demux_subshards(sample_work / "demux").keys()),
+                plan_by_prefix=lambda _demux_dir, prefix_list: prefix_list,
+                base_dir=sample_work / "demux",
+                settings=settings,
+                label="regroup prefixes",
+            )
+            print(f"[make_cmd] runner={settings['runner']}")
+            print(f"[make_cmd] stage={settings['stage']}")
+            print(f"[make_cmd] sample_id={settings['sample_id']}")
+            print(f"[make_cmd] prefix_count={len(prefixes)}")
+            for prefix in prefixes:
+                base_name = f"{regroup_prefix}_regroup_shards_{prefix}"
+                script_path = command_dir / f"{base_name}.sbatch"
+                command = build_regroup_prefix_command(sample_work, prefix)
+                chunk_output = settings["slurm_output"].replace(
+                    "%x", f"seeksoul_regroup_{settings['sample_id']}_{prefix}"
+                )
+                chunk_error = settings["slurm_error"].replace(
+                    "%x", f"seeksoul_regroup_{settings['sample_id']}_{prefix}"
+                )
+                print(f"[make_cmd] script={script_path}")
+                print(f"[make_cmd] command={command}")
+                if not settings["dry_run"]:
+                    slurm_args = argparse.Namespace(
+                        job_name=f"seeksoul_regroup_{settings['sample_id']}_{prefix}",
+                        slurm_partition=settings["slurm_partition"],
+                        slurm_mem=settings["slurm_mem"],
+                        slurm_cpus_per_task=settings["slurm_cpus_per_task"],
+                        slurm_output=chunk_output,
+                        slurm_error=chunk_error,
+                    )
+                    generate_slurm_script(command, script_path, log_dir, slurm_args)
+                generated_scripts.append(script_path)
     elif settings["stage"] == "bismark_align":
         command_args = argparse.Namespace(
             bismark_ref=settings["bismark_ref"],
@@ -1589,8 +1773,9 @@ def main() -> int:
             bismark_max_insert=settings["bismark_max_insert"],
             bismark_bin=settings["bismark_bin"],
         )
+        align_prefix = stage_prefix_map(settings["_stage_sequence"])["bismark_align"]
         if settings["runner"] == "local":
-            script_path = command_dir / "03_bismark_align.sh"
+            script_path = command_dir / f"{align_prefix}_bismark_align.sh"
             command = build_bismark_align_work_command(command_args, sample_work)
             print(f"[make_cmd] runner={settings['runner']}")
             print(f"[make_cmd] stage={settings['stage']}")
@@ -1602,10 +1787,13 @@ def main() -> int:
             generate_local_script(command, script_path)
             generated_scripts.append(script_path)
         else:
-            chunks = resolve_slurm_chunks(
+            chunks = resolve_prefix_chunks(
                 discover=lambda: discover_bismark_align_chunks(sample_work),
-                plan=lambda n: wic.plan_demux_align_chunks(sample_work / "demux", n),
-                number_of_split_parts=settings.get("number_of_split_parts"),
+                plan_by_prefix=lambda demux_dir, prefixes: wic.plan_demux_align_chunks_by_prefix(
+                    demux_dir, prefixes
+                ),
+                base_dir=sample_work / "demux",
+                settings=settings,
                 label="demux align inputs",
             )
             print(f"[make_cmd] runner={settings['runner']}")
@@ -1613,7 +1801,7 @@ def main() -> int:
             print(f"[make_cmd] sample_id={settings['sample_id']}")
             print(f"[make_cmd] chunk_count={len(chunks)}")
             for chunk_id, fwd_r1, fwd_r2, rev_r1, rev_r2 in chunks:
-                base_name = f"03_bismark_align_{chunk_id}"
+                base_name = f"{align_prefix}_bismark_align_{chunk_id}"
                 script_path = command_dir / f"{base_name}.sbatch"
                 command = build_bismark_align_chunk_command(
                     command_args,
@@ -1648,8 +1836,9 @@ def main() -> int:
             sort_threads=settings["sort_threads"],
             samtools_bin=settings["samtools_bin"],
         )
+        sort_prefix = stage_prefix_map(settings["_stage_sequence"])["bam_sort"]
         if settings["runner"] == "local":
-            script_path = command_dir / "04_bam_sort.sh"
+            script_path = command_dir / f"{sort_prefix}_bam_sort.sh"
             command = build_bam_sort_work_command(command_args, sample_work)
             print(f"[make_cmd] runner={settings['runner']}")
             print(f"[make_cmd] stage={settings['stage']}")
@@ -1661,10 +1850,13 @@ def main() -> int:
             generate_local_script(command, script_path)
             generated_scripts.append(script_path)
         else:
-            chunks = resolve_slurm_chunks(
+            chunks = resolve_prefix_chunks(
                 discover=lambda: discover_bam_sort_chunks(sample_work),
-                plan=lambda n: wic.plan_bismark_pe_bams(sample_work / "align", n),
-                number_of_split_parts=settings.get("number_of_split_parts"),
+                plan_by_prefix=lambda align_dir, prefixes: wic.plan_bismark_pe_bams_by_prefix(
+                    align_dir, prefixes
+                ),
+                base_dir=sample_work / "align",
+                settings=settings,
                 label="Bismark PE BAMs",
             )
             print(f"[make_cmd] runner={settings['runner']}")
@@ -1672,7 +1864,7 @@ def main() -> int:
             print(f"[make_cmd] sample_id={settings['sample_id']}")
             print(f"[make_cmd] chunk_count={len(chunks)}")
             for chunk_id, forward_bam, reverse_bam in chunks:
-                base_name = f"04_bam_sort_{chunk_id}"
+                base_name = f"{sort_prefix}_bam_sort_{chunk_id}"
                 script_path = command_dir / f"{base_name}.sbatch"
                 command = build_bam_sort_chunk_command(
                     command_args,
@@ -1715,10 +1907,13 @@ def main() -> int:
             generate_local_script(command, script_path)
             generated_scripts.append(script_path)
         else:
-            chunks = resolve_slurm_chunks(
+            chunks = resolve_prefix_chunks(
                 discover=lambda: discover_bam_sort_chunks(sample_work),
-                plan=lambda n: wic.plan_bismark_pe_bams(sample_work / "align", n),
-                number_of_split_parts=settings.get("number_of_split_parts"),
+                plan_by_prefix=lambda align_dir, prefixes: wic.plan_bismark_pe_bams_by_prefix(
+                    align_dir, prefixes
+                ),
+                base_dir=sample_work / "align",
+                settings=settings,
                 label="unsorted Bismark PE BAMs",
             )
             print(f"[make_cmd] runner={settings['runner']}")
@@ -1805,10 +2000,13 @@ def main() -> int:
             generate_local_script(command, script_path)
             generated_scripts.append(script_path)
         else:
-            chunks = resolve_slurm_chunks(
+            chunks = resolve_prefix_chunks(
                 discover=lambda: wic.discover_bismark_sortbyname_bams(sample_work / "align"),
-                plan=lambda n: wic.plan_bismark_sortbyname_bams(sample_work / "align", n),
-                number_of_split_parts=settings.get("number_of_split_parts"),
+                plan_by_prefix=lambda align_dir, prefixes: wic.plan_bismark_sortbyname_bams_by_prefix(
+                    align_dir, prefixes
+                ),
+                base_dir=sample_work / "align",
+                settings=settings,
                 label="sortbyname Bismark PE BAMs",
             )
             print(f"[make_cmd] runner={settings['runner']}")
@@ -1862,10 +2060,13 @@ def main() -> int:
             generate_local_script(command, script_path)
             generated_scripts.append(script_path)
         else:
-            pairs = resolve_slurm_chunks(
+            pairs = resolve_prefix_chunks(
                 discover=lambda: wic.discover_split_bam_chunk_pairs(sample_work / "split_bams"),
-                plan=lambda n: wic.plan_split_bam_chunk_pairs(sample_work / "split_bams", n),
-                number_of_split_parts=settings.get("number_of_split_parts"),
+                plan_by_prefix=lambda split_root, prefixes: wic.plan_split_bam_chunk_pairs_by_prefix(
+                    split_root, prefixes
+                ),
+                base_dir=sample_work / "split_bams",
+                settings=settings,
                 label="split BAM chunk pairs",
             )
             print(f"[make_cmd] runner={settings['runner']}")
@@ -1923,14 +2124,15 @@ def main() -> int:
             generate_local_script(command, script_path)
             generated_scripts.append(script_path)
         else:
-            chunks = resolve_slurm_chunks(
+            chunks = resolve_prefix_chunks(
                 discover=lambda: wic.discover_merged_fr_bam_chunks(
                     sample_work / "split_bams" / "merged"
                 ),
-                plan=lambda n: wic.plan_merged_fr_bam_chunks(
-                    sample_work / "split_bams" / "merged", n
+                plan_by_prefix=lambda merged_root, prefixes: wic.plan_merged_fr_bam_chunks_by_prefix(
+                    merged_root, prefixes
                 ),
-                number_of_split_parts=settings.get("number_of_split_parts"),
+                base_dir=sample_work / "split_bams" / "merged",
+                settings=settings,
                 label="merged FR BAM chunks",
             )
             print(f"[make_cmd] runner={settings['runner']}")

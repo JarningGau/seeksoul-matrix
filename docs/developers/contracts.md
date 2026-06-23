@@ -4,9 +4,20 @@ Normative input/output contracts for seeksoul-matrix workflow stages.
 
 ## Main stage order (planned)
 
-`fastp_split -> demux_extract_bc -> bismark_align -> bam_sort -> (count_mapped_reads -> estimated_cells)? -> split_bams -> merge_fr_bams -> bam_to_allc -> saturation`
+`fastp_split -> demux_extract_bc -> regroup_shards -> bismark_align -> bam_sort -> (count_mapped_reads -> estimated_cells)? -> split_bams -> merge_fr_bams -> bam_to_allc -> saturation`
 
-`fastp_split`, `demux_extract_bc`, `bismark_align`, `bam_sort`, `count_mapped_reads`, `estimated_cells`, `split_bams`, `merge_fr_bams`, `bam_to_allc`, and `saturation` are implemented in this repository revision.
+`fastp_split`, `demux_extract_bc`, `regroup_shards`, `bismark_align`, `bam_sort`, `count_mapped_reads`, `estimated_cells`, `split_bams`, `merge_fr_bams`, `bam_to_allc`, and `saturation` are implemented in this repository revision.
+
+### Chunk model (barcode-prefix shards)
+
+| Concept | Key / ID | Role |
+|---------|----------|------|
+| Read-order chunk | numeric `0001..N` from `number_of_split_parts` | fastp split + parallel demux input only |
+| Analysis chunk | barcode prefix from `split_fastq_prefix_bases` (default `1`) | all stages from `regroup_shards` through `saturation` |
+
+With DD-MET5 barcodes (no `C`), `split_fastq_prefix_bases=1` yields up to 3 analysis chunks (`A`, `G`, `T`). Each cell barcode maps to exactly one prefix; regrouped shards are disjoint by barcode.
+
+Manifest: `work/<sample>/demux/chunks.tsv` (`chunk_id`, `prefix`, `stream`, `subshard_count`, `subshard_paths`).
 
 ### Barcode selection mode (mutually exclusive)
 
@@ -38,28 +49,34 @@ Outputs:
 Contract:
 
 - Adapter trimming is disabled (`--disable_adapter_trimming`).
-- Chunk count is controlled by `number_of_split_parts` (passed to `fastp --split`).
+- Chunk count is controlled by `number_of_split_parts` (passed to `fastp --split`); this controls **read-order parallelism** for demux only, not analysis chunk boundaries.
 - Downstream `demux_extract_bc` will read paired shards from `shard_fastq/`.
 
 ### `demux_extract_bc`
 
-Purpose: DD-MET5 barcode extraction, C→T QC, adapter trimming, and forward/reverse paired FASTQ output.
+Purpose: DD-MET5 barcode extraction, C→T QC, adapter trimming, and forward/reverse paired FASTQ output with optional barcode-prefix sub-sharding.
 
 Inputs:
 
-- `work/<sample>/shard_fastq/R1*.fq.gz` or `<chunk>.R1.fq.gz` and paired R2 from `fastp_split`
+- `work/<sample>/shard_fastq/R1*.fq.gz` or `<readchunk>.R1.fq.gz` and paired R2 from `fastp_split`
 - cell barcode whitelist: `whitelist/DD-MET5/U3CB_methylation.txt.gz` (default)
+- `split_fastq_prefix_bases` (workflow key, default `1`; SeekSoul `split_fastq`): first N bases of corrected barcode for prefix sub-shards
 
-Per-chunk outputs under `work/<sample>/demux/`:
+Per-read-chunk outputs under `work/<sample>/demux/`:
 
 | File | Columns / fields | Description |
 |------|------------------|-------------|
-| `<chunk>.forward_1.fq.gz` / `.forward_2.fq.gz` | — | forward-strand paired FASTQ |
-| `<chunk>.reverse_1.fq.gz` / `.reverse_2.fq.gz` | — | reverse-strand paired FASTQ |
-| `<chunk>.linker.tsv` | `CR`, `UB`, `C`, `T` | one row per UMI-deduped QC read; `CR` = corrected CB, `UB` = 12 bp UMI, `C`/`T` = convertible-base counts |
-| `<chunk>.stats.json` | grouped JSON | chunk-level demux and C→T QC metrics (see schema below) |
+| `<readchunk>.linker.tsv` | `CR`, `UB`, `C`, `T` | one row per UMI-deduped QC read; `CR` = corrected CB, `UB` = 12 bp UMI, `C`/`T` = convertible-base counts |
+| `<readchunk>.stats.json` | grouped JSON | read-chunk demux and C→T QC metrics (see schema below) |
 
-Sample-level output (after all chunks complete):
+When `split_fastq_prefix_bases > 0`, demux FASTQ sub-shards under `work/<sample>/demux/shards/`:
+
+| File | Description |
+|------|-------------|
+| `<readchunk>__<prefix>.forward_1.fq.gz` / `.forward_2.fq.gz` | forward-strand sub-shard for barcode prefix |
+| `<readchunk>__<prefix>.reverse_1.fq.gz` / `.reverse_2.fq.gz` | reverse-strand sub-shard for barcode prefix |
+
+Sample-level output (after all read-chunks complete):
 
 | File | Columns | Description |
 |------|---------|-------------|
@@ -106,6 +123,28 @@ funnel.total
 Accounting: `funnel.total = barcode_rejected + barcode_ambiguous + barcode_passed.total`; `barcode_passed.total = unknown_chain + too_short + chimeric_filtered.total + valid.total` (when `unknown_chain` reads leave before length filter).
 
 `CtoT` is rounded to 3 decimal places; fractions use 6 decimal places.
+
+### `regroup_shards`
+
+Purpose: concatenate demux prefix sub-shards into one analysis shard per barcode prefix (SeekSoul `split_fastq` alignment).
+
+Inputs:
+
+- `work/<sample>/demux/shards/<readchunk>__<prefix>.{forward,reverse}_{1,2}.fq.gz`
+
+Outputs under `work/<sample>/demux/`:
+
+| File | Description |
+|------|-------------|
+| `<prefix>.forward_1.fq.gz` / `.forward_2.fq.gz` | regrouped forward-strand paired FASTQ |
+| `<prefix>.reverse_1.fq.gz` / `.reverse_2.fq.gz` | regrouped reverse-strand paired FASTQ |
+| `chunks.tsv` | manifest of analysis chunks and source sub-shards |
+
+Contract:
+
+- Gzip member concatenation (binary append) merges sub-shards per stream.
+- Analysis `chunk_id` equals barcode prefix (e.g. `A`, `G`, `T` when `split_fastq_prefix_bases=1`).
+- Downstream stages discover chunks from top-level `demux/<prefix>.*` files only (not `demux/shards/`).
 
 ### `bismark_align`
 

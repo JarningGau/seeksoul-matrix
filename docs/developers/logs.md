@@ -1,5 +1,60 @@
 # Development log
 
+## 2026-06-23 — eleven-stage local e2e (prefix chunks)
+
+**Task:** Validate full methylation-only pipeline with barcode-prefix analysis chunks (`regroup_shards` → `saturation`) via local `run.sh`.
+
+**Files changed:**
+- `docs/developers/logs.md`
+- `docs/developers/chunk-split-rewrite-todo.md`
+- `AGENTS.md`
+
+**Summary:**
+- Clean run on `work/dd-met5-example` with `workflow/dd_met5_test.json` (`split_fastq_prefix_bases=1`, `number_of_split_parts=2`, `force_cell_num=50`, `filter_ch=2`).
+- All 11 stages completed in ~5.4 min: fastp → demux → regroup → bismark → bam_sort → count → estimate → split → merge → allc → saturation.
+- Analysis chunks `A`/`G`/`T` from `demux/chunks.tsv`; regroup concatenates 2 read-order sub-shards per prefix/stream.
+
+**Checks performed:**
+- `pixi run check-bismark-env`, `pixi run check-allcools-env`
+- `pixi run python scripts/make_cmd.py --workflow-config workflow/dd_met5_test.json --stage all`
+- `bash work/dd-met5-example/commands/run.sh` (exit 0; log `work/dd-met5-example/e2e_run.log`)
+- Demux: ~224k valid reads/chunk, C→T ≈ 0.997
+- `estimated_cells`: 28,667 total barcodes → 50 filtered
+- ALLC barcode overlap across `allcools/{A,G,T}_merged_fr_bam_allcools/`: **0 overlap** (17+16+17 = 50 unique)
+- Saturation: `hq_cell_count=50`, median unique molecules = 251, `saturation_rate≈18.4%`
+
+**Status:** done
+
+**Notes:** Supersedes 2026-06-18 nine-stage local e2e (read-order chunk IDs `0001`/`0002`). Closes the open item in the barcode-prefix rewrite log entry (full downstream on prefix shards). gexcb path and Slurm 11-stage submit not re-tested in this check.
+
+## 2026-06-23 — barcode-prefix chunk split rewrite
+
+**Task:** Rewrite analysis chunking from fastp read-order to barcode-prefix shards (SeekSoul `split_fastq` alignment).
+
+**Files changed:**
+- `scripts/demux_extract_bc.py` — `--split-fastq`, prefix sub-shards under `demux/shards/<readchunk>__<prefix>.*`
+- `scripts/regroup_shards.py` (new) — gzip-concat sub-shards to `demux/<prefix>.*`, `chunks.tsv` manifest
+- `scripts/make_cmd.py` — new `regroup_shards` stage, `split_fastq` workflow key, prefix-based Slurm planners
+- `scripts/workflow_input_checks.py` — `plan_prefix_chunks`, `discover_demux_subshards`, `plan_*_by_prefix` helpers
+- `workflow/dd_met5_test.json`, `workflow/dd_met5_slurm.json`, `workflow/dd_met5_gexcb_test.json`
+- `docs/developers/contracts.md`, `AGENTS.md`, `pixi.toml`
+- `docs/developers/chunk-split-rewrite-todo.md`
+
+**Summary:**
+- Pipeline: `fastp_split` (read-order parallelism) → `demux_extract_bc` (prefix sub-shards) → `regroup_shards` → downstream per prefix (`A`/`G`/`T` when `split_fastq=1`).
+- `number_of_split_parts` now controls demux parallelism only; analysis chunk cardinality follows whitelist prefix set.
+- Slurm DAG: demux chunks → (`aggregate_ct_qc` + per-prefix regroup) → bismark per prefix.
+
+**Checks performed:**
+- `demux_extract_bc.py --help`, `regroup_shards.py --help`
+- `pixi run e2e-dry-run` / `pixi run e2e-slurm-dry-run` → 11-stage driver; Slurm chunk IDs `A`/`G`/`T`
+- Local on `work/dd-met5-example`: fastp → demux (`split_fastq=1`) → regroup → 3 prefix shards
+- Barcode overlap check on regrouped `demux/{A,G,T}.forward_1.fq.gz`: **zero overlap** (8260/8066/8016 barcodes)
+
+**Status:** done
+
+**Notes:** Full downstream (bismark → saturation) validated in the eleven-stage local e2e entry above. Demux+regroup validation here confirmed chunk disjointness at FASTQ level. Workflow key renamed to `split_fastq_prefix_bases` (CLI: `--split-fastq-prefix-bases`) to distinguish from SeekSoul `split_fastq`.
+
 ## 2026-06-23 — saturation stage (pre-dedup BAM molecule curve)
 
 **Task:** Add dbit-matrix-style sequencing saturation QC stage after `bam_to_allc`.
@@ -70,7 +125,7 @@
 
 **Status:** done
 
-**Notes:** gexcb path not exercised. Local e2e remains `work/dd-met5-example` via `run.sh` (see 2026-06-18 entry).
+**Notes:** gexcb path not exercised. Local eleven-stage e2e on prefix chunks: see 2026-06-23 entry (supersedes 2026-06-18 nine-stage local run).
 
 ## 2026-06-23 — bam_to_allc PATH for tabix on Slurm compute nodes
 
@@ -171,7 +226,7 @@
 
 **Status:** done
 
-**Notes:** Supersedes the seven-stage e2e entry (stages 08–09 added). Slurm DAG validated on HPC (2026-06-23); see that entry. gexcb path not exercised.
+**Notes:** Superseded by eleven-stage local e2e with prefix chunks (2026-06-23). Slurm DAG validated on HPC (2026-06-23); see that entry. gexcb path not exercised.
 
 ## 2026-06-18 — estimated_cells force_cell_num
 

@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import gzip
 import re
 from pathlib import Path
 
@@ -85,6 +86,81 @@ def build_chunk_names(number_of_split_parts: int) -> list[str]:
     return [f"{index:0{width}d}" for index in range(1, number_of_split_parts + 1)]
 
 
+def read_whitelist_barcodes(path: Path) -> set[str]:
+    """Load barcode whitelist (plain or gzipped)."""
+    path = Path(path)
+    barcodes: set[str] = set()
+    opener = gzip.open if str(path).endswith(".gz") else open
+    mode = "rt"
+    with opener(path, mode, encoding="utf-8") as handle:
+        for raw_line in handle:
+            line = raw_line.strip().upper()
+            if line and not line.startswith("#"):
+                barcodes.add(line)
+    if not barcodes:
+        raise ValueError(f"empty barcode whitelist: {path}")
+    return barcodes
+
+
+def plan_prefix_chunks(whitelist_path: Path, prefix_bases: int) -> list[str]:
+    """Return sorted barcode prefixes for analysis chunk planning."""
+    if prefix_bases <= 0:
+        raise ValueError("split_fastq_prefix_bases must be > 0 for prefix chunk planning")
+    barcodes = read_whitelist_barcodes(whitelist_path)
+    prefixes = sorted(
+        {bc[:prefix_bases] for bc in barcodes if len(bc) >= prefix_bases}
+    )
+    if not prefixes:
+        raise ValueError(
+            f"no barcode prefixes from whitelist {whitelist_path} "
+            f"with split_fastq_prefix_bases={prefix_bases}"
+        )
+    return prefixes
+
+
+def discover_demux_subshards(
+    demux_dir: Path,
+) -> dict[str, dict[str, list[Path]]]:
+    """Return {prefix: {stream: [sub-shard paths]}} under demux/shards/."""
+    shard_dir = Path(demux_dir) / "shards"
+    if not shard_dir.is_dir():
+        return {}
+
+    subshard_re = re.compile(
+        r"^(?P<readchunk>[^_]+)__(?P<prefix>[A-Z]+)\."
+        r"(?P<stream>forward_1|forward_2|reverse_1|reverse_2)\.fq\.gz$"
+    )
+    streams = ("forward_1", "forward_2", "reverse_1", "reverse_2")
+    grouped: dict[str, dict[str, list[Path]]] = {}
+    for path in sorted(shard_dir.glob("*__*.fq.gz")):
+        match = subshard_re.match(path.name)
+        if not match:
+            continue
+        prefix = match.group("prefix")
+        stream = match.group("stream")
+        if stream not in streams:
+            continue
+        grouped.setdefault(prefix, {}).setdefault(stream, []).append(path)
+    return grouped
+
+
+def plan_demux_align_chunks_by_prefix(
+    demux_dir: Path, prefixes: list[str]
+) -> list[tuple[str, Path, Path, Path, Path]]:
+    """Return expected regrouped demux FASTQ paths for prefix analysis chunks."""
+    demux_dir = Path(demux_dir)
+    return [
+        (
+            prefix,
+            demux_dir / f"{prefix}.forward_1.fq.gz",
+            demux_dir / f"{prefix}.forward_2.fq.gz",
+            demux_dir / f"{prefix}.reverse_1.fq.gz",
+            demux_dir / f"{prefix}.reverse_2.fq.gz",
+        )
+        for prefix in prefixes
+    ]
+
+
 def plan_fastp_shards(shard_dir: Path, number_of_split_parts: int) -> list[tuple[str, Path, Path]]:
     """Return expected shard paths when fastp outputs are not present yet."""
     shard_dir = Path(shard_dir)
@@ -115,6 +191,21 @@ def plan_demux_align_chunks(
     ]
 
 
+def plan_bismark_pe_bams_by_prefix(
+    align_dir: Path, prefixes: list[str]
+) -> list[tuple[str, Path, Path]]:
+    """Return expected unsorted Bismark PE BAM paths for prefix chunks."""
+    align_dir = Path(align_dir)
+    return [
+        (
+            prefix,
+            align_dir / f"{prefix}.forward_1_bismark_bt2_pe.bam",
+            align_dir / f"{prefix}.reverse_1_bismark_bt2_pe.bam",
+        )
+        for prefix in prefixes
+    ]
+
+
 def plan_bismark_pe_bams(
     align_dir: Path, number_of_split_parts: int
 ) -> list[tuple[str, Path, Path]]:
@@ -127,6 +218,21 @@ def plan_bismark_pe_bams(
             align_dir / f"{chunk_id}.reverse_1_bismark_bt2_pe.bam",
         )
         for chunk_id in build_chunk_names(number_of_split_parts)
+    ]
+
+
+def plan_bismark_sortbyname_bams_by_prefix(
+    align_dir: Path, prefixes: list[str]
+) -> list[tuple[str, Path, Path]]:
+    """Return expected sortbyname Bismark PE BAM paths for prefix chunks."""
+    align_dir = Path(align_dir)
+    return [
+        (
+            prefix,
+            align_dir / f"{prefix}.forward_1_bismark_bt2_pe_sortbyname.bam",
+            align_dir / f"{prefix}.reverse_1_bismark_bt2_pe_sortbyname.bam",
+        )
+        for prefix in prefixes
     ]
 
 
@@ -145,6 +251,21 @@ def plan_bismark_sortbyname_bams(
     ]
 
 
+def plan_split_bam_chunk_pairs_by_prefix(
+    split_root: Path, prefixes: list[str]
+) -> list[tuple[str, Path, Path]]:
+    """Return expected split BAM strand dirs for prefix chunks."""
+    split_root = Path(split_root)
+    return [
+        (
+            prefix,
+            split_root / f"{prefix}.forward_1",
+            split_root / f"{prefix}.reverse_1",
+        )
+        for prefix in prefixes
+    ]
+
+
 def plan_split_bam_chunk_pairs(
     split_root: Path, number_of_split_parts: int
 ) -> list[tuple[str, Path, Path]]:
@@ -157,6 +278,21 @@ def plan_split_bam_chunk_pairs(
             split_root / f"{chunk_id}.reverse_1",
         )
         for chunk_id in build_chunk_names(number_of_split_parts)
+    ]
+
+
+def plan_merged_fr_bam_chunks_by_prefix(
+    merged_root: Path, prefixes: list[str]
+) -> list[tuple[str, Path, Path]]:
+    """Return expected merged FR BAM dirs for prefix chunks."""
+    merged_root = Path(merged_root)
+    return [
+        (
+            prefix,
+            merged_root / f"{prefix}_merged_fr_bam",
+            merged_root / f"{prefix}_merge_filtered_barcode",
+        )
+        for prefix in prefixes
     ]
 
 

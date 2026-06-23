@@ -7,6 +7,7 @@
     "work_root": "work",
     "fastp_threads": 2,
     "number_of_split_parts": 2,
+    "split_fastq_prefix_bases": 1,
     "fastp_bin": "fastp",
     "barcode_whitelist": "whitelist/DD-MET5/U3CB_methylation.txt.gz",
     "barcode_hamming_distance": 1,

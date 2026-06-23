@@ -8,6 +8,7 @@ version = "0.1.0"
 [tasks]
 fastp-dry-run = "python scripts/make_cmd.py --workflow-config workflow/dd_met5_test.json --skip-workdir-input-checks --dry-run"
 demux-dry-run = "python scripts/make_cmd.py --workflow-config workflow/dd_met5_test.json --stage demux_extract_bc --skip-workdir-input-checks --dry-run"
+regroup-dry-run = "python scripts/make_cmd.py --workflow-config workflow/dd_met5_test.json --stage regroup_shards --skip-workdir-input-checks --dry-run"
 bismark-align-dry-run = "python scripts/make_cmd.py --workflow-config workflow/dd_met5_test.json --stage bismark_align --skip-workdir-input-checks --dry-run"
 bam-sort-dry-run = "python scripts/make_cmd.py --workflow-config workflow/dd_met5_test.json --stage bam_sort --skip-workdir-input-checks --dry-run"
 count-mapped-reads-dry-run = "python scripts/make_cmd.py --workflow-config workflow/dd_met5_test.json --stage count_mapped_reads --skip-workdir-input-checks --dry-run"
