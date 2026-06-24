@@ -7,7 +7,7 @@
     "work_root": "work",
     "fastp_threads": 8,
     "number_of_split_parts": 8,
-    "split_fastq_prefix_bases": 1,
+    "split_fastq_prefix_bases": 2,
     "fastp_bin": "fastp",
     "barcode_whitelist": "whitelist/DD-MET5/U3CB_methylation.txt.gz",
     "barcode_hamming_distance": 1,
@@ -30,7 +30,7 @@
     "slurm": {
         "fastp_split": {
             "partition": "amd-ep2",
-            "mem": "16G",
+            "mem": "8G",
             "cpus_per_task": 8
         },
         "demux_extract_bc": {
@@ -45,12 +45,12 @@
         },
         "bismark_align": {
             "partition": "amd-ep2",
-            "mem": "160G",
+            "mem": "120G",
             "cpus_per_task": 16
         },
         "bam_sort": {
             "partition": "amd-ep2",
-            "mem": "32G",
+            "mem": "12G",
             "cpus_per_task": 8
         },
         "count_mapped_reads": {
@@ -65,22 +65,22 @@
         },
         "split_bams": {
             "partition": "amd-ep2",
-            "mem": "64G",
+            "mem": "4G",
             "cpus_per_task": 16
         },
         "merge_fr_bams": {
             "partition": "amd-ep2",
-            "mem": "64G",
+            "mem": "4G",
             "cpus_per_task": 16
         },
         "bam_to_allc": {
             "partition": "amd-ep2",
-            "mem": "128G",
+            "mem": "16G",
             "cpus_per_task": 16
         },
         "saturation": {
             "partition": "amd-ep2",
-            "mem": "16G",
+            "mem": "12G",
             "cpus_per_task": 1
         }
     }
