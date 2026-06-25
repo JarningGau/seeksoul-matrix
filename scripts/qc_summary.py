@@ -15,6 +15,16 @@ from _version import __version__
 CPG_CONTEXTS = ("CGT", "CGG", "CGC", "CGA")
 NA = "NA"
 
+AGGREGATED_MC_RATE_COLUMNS = (
+    "CG_mc_rate",
+    "CH_mc_rate",
+    "CHG_mc_rate",
+    "CHH_mc_rate",
+    "CA_mc_rate",
+    "CT_mc_rate",
+    "CC_mc_rate",
+)
+
 CORE_CELL_COLUMNS = (
     "cell_barcode",
     "aligned_reads",
@@ -24,7 +34,7 @@ CORE_CELL_COLUMNS = (
     "genome_cov_raw_umi",
     "genome_cov_new_umi",
     "cell_saturation",
-    "weighted_mc_rate",
+    *AGGREGATED_MC_RATE_COLUMNS,
 )
 
 SAMPLE_SUMMARY_COLUMNS = (
@@ -33,6 +43,7 @@ SAMPLE_SUMMARY_COLUMNS = (
     "total_bases",
     "duplication_rate",
     "valid_barcode_rate",
+    "valid_demux_rate",
     "barcode_corrected_fraction",
     "dropped_too_short",
     "dropped_chimeric",
@@ -213,7 +224,10 @@ def aggregate_demux_stats(demux_dir: Path) -> dict[str, str | int | float]:
         totals["ct_convertible"] += int(ct.get("ct_convertible_bases") or 0)
         totals["ct_converted"] += int(ct.get("ct_converted_bases") or 0)
 
-    valid_rate = totals["valid"] / totals["total"] if totals["total"] else None
+    valid_barcode_rate = (
+        totals["barcode_passed"] / totals["total"] if totals["total"] else None
+    )
+    valid_demux_rate = totals["valid"] / totals["total"] if totals["total"] else None
     corrected_fraction = (
         totals["corrected"] / totals["barcode_passed"]
         if totals["barcode_passed"]
@@ -233,7 +247,8 @@ def aggregate_demux_stats(demux_dir: Path) -> dict[str, str | int | float]:
         else None
     )
     return {
-        "valid_barcode_rate": format_rate(valid_rate),
+        "valid_barcode_rate": format_rate(valid_barcode_rate),
+        "valid_demux_rate": format_rate(valid_demux_rate),
         "barcode_corrected_fraction": format_rate(corrected_fraction),
         "dropped_too_short": format_rate(dropped_too_short),
         "dropped_chimeric": format_rate(dropped_chimeric),
@@ -482,15 +497,54 @@ def to_int(value: str | None) -> int:
     return int(float(value))
 
 
+def aggregated_mc_rate(mc: float, cov: float) -> float:
+    return mc / cov if cov > 0 else 0.0
+
+
+def compute_aggregated_mc_rates(context_rows: list[dict[str, str]]) -> dict[str, float]:
+    totals = {column: {"mc": 0.0, "cov": 0.0} for column in AGGREGATED_MC_RATE_COLUMNS}
+    for row in context_rows:
+        context = row["context"]
+        if len(context) < 2:
+            continue
+        mc = to_float(row.get("mc"))
+        cov = to_float(row.get("cov"))
+        second = context[1]
+        third = context[2] if len(context) >= 3 else ""
+        if second == "G":
+            totals["CG_mc_rate"]["mc"] += mc
+            totals["CG_mc_rate"]["cov"] += cov
+        else:
+            totals["CH_mc_rate"]["mc"] += mc
+            totals["CH_mc_rate"]["cov"] += cov
+            if third == "G":
+                totals["CHG_mc_rate"]["mc"] += mc
+                totals["CHG_mc_rate"]["cov"] += cov
+            else:
+                totals["CHH_mc_rate"]["mc"] += mc
+                totals["CHH_mc_rate"]["cov"] += cov
+            if second == "A":
+                totals["CA_mc_rate"]["mc"] += mc
+                totals["CA_mc_rate"]["cov"] += cov
+            elif second == "T":
+                totals["CT_mc_rate"]["mc"] += mc
+                totals["CT_mc_rate"]["cov"] += cov
+            elif second == "C":
+                totals["CC_mc_rate"]["mc"] += mc
+                totals["CC_mc_rate"]["cov"] += cov
+    return {
+        column: aggregated_mc_rate(totals[column]["mc"], totals[column]["cov"])
+        for column in AGGREGATED_MC_RATE_COLUMNS
+    }
+
+
 def build_cells_summary(
     allcools_dir: Path,
     reads_map: dict[str, int],
     ctot_map: dict[str, str],
     gex_cb_map: dict[str, str] | None,
-) -> tuple[list[dict[str, str]], list[str]]:
+) -> list[dict[str, str]]:
     count_paths = sorted(allcools_dir.glob("*/*_allc.gz.count.csv"))
-    context_columns: list[str] = []
-    context_set: set[str] = set()
     cell_rows: list[dict[str, str]] = []
 
     for count_path in count_paths:
@@ -499,10 +553,7 @@ def build_cells_summary(
         if not context_rows:
             continue
 
-        total_mc = 0.0
-        total_cov = 0.0
         total_cpg_number = 0
-        context_rates: dict[str, str] = {}
         genome_cov = ""
         genome_cov_raw_umi = ""
         genome_cov_new_umi = ""
@@ -510,21 +561,16 @@ def build_cells_summary(
 
         for row in context_rows:
             context = row["context"]
-            mc = to_float(row.get("mc"))
-            cov = to_float(row.get("cov"))
             number = to_int(row.get("number"))
-            total_mc += mc
-            total_cov += cov
             if context in CPG_CONTEXTS:
                 total_cpg_number += number
-            context_rates[context] = row.get("mc_rate") or ""
             if not genome_cov:
                 genome_cov = row.get("genome_cov") or ""
                 genome_cov_raw_umi = row.get("genome_cov_raw_umi") or ""
                 genome_cov_new_umi = row.get("genome_cov_new_umi") or ""
                 cell_saturation = row.get("cell_saturation") or ""
 
-        weighted_mc_rate = total_mc / total_cov if total_cov > 0 else 0.0
+        aggregated_rates = compute_aggregated_mc_rates(context_rows)
         row_out: dict[str, str] = {
             "cell_barcode": barcode,
             "aligned_reads": str(reads_map.get(barcode, "")),
@@ -534,20 +580,16 @@ def build_cells_summary(
             "genome_cov_raw_umi": genome_cov_raw_umi,
             "genome_cov_new_umi": genome_cov_new_umi,
             "cell_saturation": cell_saturation,
-            "weighted_mc_rate": format_rate(weighted_mc_rate),
+            **{
+                column: format_rate(aggregated_rates[column])
+                for column in AGGREGATED_MC_RATE_COLUMNS
+            },
         }
         if gex_cb_map is not None:
             row_out["gex_cb"] = gex_cb_map.get(barcode, "")
-        for context, mc_rate in sorted(context_rates.items()):
-            column = f"{context}_mc_rate"
-            row_out[column] = mc_rate
-            if column not in context_set:
-                context_set.add(column)
-                context_columns.append(column)
         cell_rows.append(row_out)
 
-    context_columns.sort()
-    return cell_rows, context_columns
+    return cell_rows
 
 
 def median_cell_stats(
@@ -759,7 +801,7 @@ def main() -> int:
     ctot_map = load_ctot_map(ctot_path)
     gex_cb_map = load_gex_cb_map(args.cbcsv)
 
-    cell_rows, context_columns = build_cells_summary(
+    cell_rows = build_cells_summary(
         allcools_dir,
         reads_map,
         ctot_map,
@@ -780,7 +822,6 @@ def main() -> int:
     cell_columns = list(CORE_CELL_COLUMNS)
     if gex_cb_map is not None:
         cell_columns = [*cell_columns, "gex_cb"]
-    cell_columns = [*cell_columns, *context_columns]
 
     write_tsv(cells_out, cell_columns, cell_rows)
     write_tsv(sample_out, list(SAMPLE_SUMMARY_COLUMNS), [sample_row])

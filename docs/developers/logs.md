@@ -1,5 +1,24 @@
 # Development log
 
+## 2026-06-25 — qc_summary cells metrics and demux rates
+
+**Task:** Refine `qc_summary` cell methylation columns and demux rate metrics in sample summary.
+
+**Files changed:**
+- `scripts/qc_summary.py`
+- `docs/developers/contracts.md`
+- `docs/developers/logs.md`
+
+**Summary:**
+- `cells_summary.tsv`: replace `weighted_mc_rate` and per-context `{context}_mc_rate` with aggregated `CG_mc_rate`, `CH_mc_rate`, `CHG_mc_rate`, `CHH_mc_rate`, `CA_mc_rate`, `CT_mc_rate`, `CC_mc_rate` (pooled `mc`/`cov` across trinucleotide contexts).
+- `valid_barcode_rate` = `barcode_passed.total` / `funnel.total` (was `valid.total` / `funnel.total`).
+- `valid_demux_rate` = `barcode_passed.valid.total` / `funnel.total` (new; retains the former `valid_barcode_rate` meaning).
+
+**Checks performed:**
+- `pixi run python scripts/qc_summary.py --work-path work/dd-met5-example --sample-id dd-met5-example`
+
+**Status:** done
+
 ## 2026-06-25 — qc_summary stage (cells + sample + wgs CSV)
 
 **Task:** Add `qc_summary` gather stage after `saturation`.
