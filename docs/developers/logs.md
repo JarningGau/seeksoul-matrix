@@ -2,6 +2,26 @@
 
 For current reliability, see [`status.md`](status.md). This file is the append-only history.
 
+## 2026-06-25 — dd_met5_slurm meth analysis config
+
+**Task:** Add MethSCAn pipeline stages to production Slurm workflow JSON.
+
+**Files changed:**
+- `workflow/dd_met5_slurm.json`
+- `docs/developers/logs.md`
+
+**Summary:**
+- Added Slurm resource blocks for `allc_to_matrix`, `meth_smooth`, `meth_scan`, and `meth_matrix` (scaled above local test: up to 64G / 16 CPUs for `meth_scan`).
+- Added meth analysis parameters aligned with `dd_met5_test.json` (`meth_scan_min_cells=6`, `meth_matrix_cores=16`); `run_meth_analysis` / `run_meth_matrix` remain `false` (opt-in via CLI flags).
+
+**Checks performed:**
+- `pixi run python scripts/make_cmd.py --workflow-config workflow/dd_met5_slurm.json --stage all --run-meth-analysis --run-meth-matrix --skip-workdir-input-checks --dry-run`
+- Generated `15_meth_scan.sbatch`; verified `#SBATCH --mem=64G` and `--cpus-per-task=16`
+
+**Status:** done
+
+**Notes:** Enable meth stages on HPC with `--run-meth-analysis` and optionally `--run-meth-matrix` when calling `make_cmd.py`.
+
 ## 2026-06-25 — gexcb fourteen-stage local e2e (base + meth analysis)
 
 **Task:** Run gexcb + meth analysis local e2e on `work/dd-met5-example` after ten-stage gexcb base pass.
