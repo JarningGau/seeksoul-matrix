@@ -2,6 +2,25 @@
 
 For current reliability, see [`status.md`](status.md). This file is the append-only history.
 
+## 2026-06-25 — pin conda-forge tbb for numba parallel layer
+
+**Task:** Fix Numba TBB threading-layer warning (`TBB_INTERFACE_VERSION = 12050` from system `/lib/x86_64-linux-gnu/libtbb.so.12`).
+
+**Files changed:**
+- `pixi.toml`, `pixi.lock`
+
+**Summary:**
+- Added explicit `tbb = ">=2021.6"` to root pixi dependencies so numba loads conda-forge `tbb 2023.0.0` from the pixi env instead of the older system library.
+
+**Checks performed:**
+- `pixi install`
+- `pixi run python -c "import numba"` — no NumbaWarning
+- `pixi run python scripts/meth_scan.py --work-path work/C283_Brain_DNAme_S1 --dry-run` — clean output
+
+**Status:** done
+
+**Notes:** None.
+
 ## 2026-06-25 — meth_smooth + meth_scan Phase 1 (MethSCAn parity passed)
 
 **Task:** Implement `meth_smooth` and `meth_scan` stages; wire workflow driver; validate vs MethSCAn on `work/dd-met5-example`.
