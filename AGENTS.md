@@ -16,6 +16,7 @@ seeksoul-matrix/
 ├── whitelist/             # Cell-barcode whitelists (e.g. DD-MET5/U3CB_methylation.txt.gz)
 ├── scripts/               # Stage scripts and workflow driver (make_cmd.py)
 ├── workflow/              # JSON workflow configs
+├── examples/              # Example local and HPC run commands (see run_*_example.sh)
 ├── docs/                  # Project documentation and stage contracts
 ├── dbit-matrix/           # Reference template — engineering patterns
 └── SeekSoulMethyl/        # Reference template — SeekSoul official methylation pipeline
@@ -88,6 +89,14 @@ bash work/<sample>/commands/run.sh
 # HPC submit (login node): bash work/<sample>/commands/run.sbatch
 ```
 
+Workflow JSON configs (`workflow/`):
+
+| Config | Runner default | Barcode mode | Intended use |
+|--------|----------------|--------------|--------------|
+| `dd_met5_test.json` | `local` | methylation-only (`expected_cell_num`; optional `force_cell_num`) | Local runs, pixi dry-run tasks, CI-style validation |
+| `dd_met5_slurm.json` | `slurm` | methylation-only | Production HPC (`number_of_split_parts=8`, `split_fastq_prefix_bases=2`); see `examples/run_slurm_example.sh` |
+| `dd_met5_gexcb_test.json` | `local` | `gexcb` (RNA barcodes) | gexcb path testing; skips `count_mapped_reads` / `estimated_cells` |
+
 ## Pipeline stages
 
 Implemented stages (`scripts/make_cmd.py`; stable I/O in `docs/developers/contracts.md`, details in `docs/developers/doc-system.md`):
@@ -109,7 +118,7 @@ Implemented stages (`scripts/make_cmd.py`; stable I/O in `docs/developers/contra
 
 Per-stage and workflow validation detail: [`docs/developers/status.md`](docs/developers/status.md).
 
-`--stage all` generates per-stage scripts under `work/<sample>/commands/` plus a driver: `run.sh` (local) or `run.sbatch` (Slurm DAG). Analysis chunks are keyed by barcode prefix (`split_fastq_prefix_bases`, default `1`); `number_of_split_parts` controls read-order demux parallelism only. Barcode selection is **mutually exclusive**: `expected_cell_num` (default 3000, methylation-only path: count → estimate → split → merge → allc → saturation → qc_summary) or `gexcb` (RNA barcodes, split → merge → allc → saturation → qc_summary). Slurm emits per-chunk sbatch files for parallel stages and aggregate jobs for `estimated_cells` / `aggregate_ct_qc`.
+`--stage all` generates per-stage scripts under `work/<sample>/commands/` plus a driver: `run.sh` (local) or `run.sbatch` (Slurm DAG). Analysis chunks are keyed by barcode prefix (`split_fastq_prefix_bases`, default `1`); `number_of_split_parts` controls read-order demux parallelism only. Barcode selection is **mutually exclusive**: `expected_cell_num` (default 3000, methylation-only path: count → estimate → split → merge → allc → saturation → qc_summary) or `gexcb` (RNA barcodes, split → merge → allc → saturation → qc_summary). Optional `force_cell_num` in workflow JSON takes top N barcodes by `aligned_reads` and overrides `expected_cell_num` threshold filtering in `estimated_cells`. Slurm emits per-chunk sbatch files for parallel stages and aggregate jobs for `estimated_cells` / `aggregate_ct_qc`.
 
 Twelve-stage driver (`fastp_split` → `qc_summary`) with barcode-prefix analysis chunks. See [`docs/developers/status.md`](docs/developers/status.md) for methylation-only and gexcb validation posture.
 
@@ -125,7 +134,7 @@ Follow **dbit-matrix** engineering patterns when implementing seeksoul-matrix; c
 
 ## Testing Guidelines
 
-No automated test suite yet. For current per-stage and workflow validation posture, see [`docs/developers/status.md`](docs/developers/status.md); historical evidence in [`docs/developers/logs.md`](docs/developers/logs.md). When adding tests, follow the template's regression style in `dbit-matrix/docs/maintenance/`. Before finishing workflow changes, run relevant CLI `--help`, `--version`, and `--dry-run` (or `pixi run fastp-dry-run` / `pixi run demux-dry-run` / `pixi run regroup-dry-run` / `pixi run bismark-align-dry-run` / `pixi run bam-sort-dry-run` / `pixi run count-mapped-reads-dry-run` / `pixi run estimated-cells-dry-run` / `pixi run split-bams-dry-run` / `pixi run merge-fr-bams-dry-run` / `pixi run bam-to-allc-dry-run` / `pixi run saturation-dry-run` / `pixi run qc-summary-dry-run` / `pixi run e2e-dry-run` / `pixi run e2e-slurm-dry-run` for the workflow driver).
+No automated test suite yet. For current per-stage and workflow validation posture, see [`docs/developers/status.md`](docs/developers/status.md); historical evidence in [`docs/developers/logs.md`](docs/developers/logs.md). When adding tests, follow the template's regression style in `dbit-matrix/docs/maintenance/`. Before finishing workflow changes, run `scripts/make_cmd.py --version`, per-stage `--help` and `--dry-run`, and the relevant `pixi run *-dry-run` tasks (`fastp-dry-run`, `demux-dry-run`, `regroup-dry-run`, `bismark-align-dry-run`, `bam-sort-dry-run`, `count-mapped-reads-dry-run`, `estimated-cells-dry-run`, `split-bams-dry-run`, `merge-fr-bams-dry-run`, `bam-to-allc-dry-run`, `saturation-dry-run`, `qc-summary-dry-run`, `e2e-dry-run`, `e2e-slurm-dry-run`).
 
 ## Lightweight Development Loop
 

@@ -285,6 +285,13 @@ def parse_args() -> argparse.Namespace:
         help="Path to qc_summary script. Default: scripts/qc_summary.py.",
     )
     parser.add_argument(
+        "--cbcsv",
+        help=(
+            "Optional methylation ↔ GEX barcode map for qc_summary gex_cb column. "
+            "Overrides workflow JSON cbcsv when set."
+        ),
+    )
+    parser.add_argument(
         "--submit",
         action="store_true",
         help="Submit immediately after generating command file.",
@@ -1140,7 +1147,7 @@ def resolve_settings(args: argparse.Namespace) -> dict:
             cfg.get("saturation_linear_r2_threshold"),
         ),
         "qc_summary_script": pick(args.qc_summary_script, cfg.get("qc_summary_script")),
-        "cbcsv": cfg.get("cbcsv"),
+        "cbcsv": pick(args.cbcsv, cfg.get("cbcsv")),
         "slurm_partition": pick(args.slurm_partition, stage_slurm_cfg.get("partition")),
         "slurm_mem": pick(args.slurm_mem, stage_slurm_cfg.get("mem")),
         "slurm_cpus_per_task": pick(

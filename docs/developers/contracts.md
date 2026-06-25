@@ -165,6 +165,8 @@ Purpose: merge per-chunk/strand barcode counts and filter to called cells (methy
 Inputs:
 
 - `work/<sample>/align/*_cb_aligned_reads_counts.csv`
+- workflow key `expected_cell_num` (default `3000`; threshold filtering)
+- optional workflow key `force_cell_num`: top N barcodes by `aligned_reads` among barcodes with reads > 0; when set, overrides `expected_cell_num` threshold filtering
 
 Sample-level outputs under `work/<sample>/cells/`:
 
@@ -248,7 +250,7 @@ Outputs under `work/<sample>/allcools/`:
 | Path |
 |------|
 | `<chunk>_merged_fr_bam_allcools/<barcode>_allc.gz` |
-| `<chunk>_merged_fr_bam_allcools/<barcode>_allc.count.csv` |
+| `<chunk>_merged_fr_bam_allcools/<barcode>_allc.gz.count.csv` |
 
 Contract:
 
@@ -294,7 +296,7 @@ Inputs:
 - `work/<sample>/qc/saturation/saturation_summary.tsv`
 - `work/<sample>/allcools/*_merged_fr_bam_allcools/*_allc.gz.count.csv`
 - cell read-count table (methylation-only or gexcb; see [chunk model](chunk_model.md#barcode-selection))
-- optional workflow key `cbcsv`
+- optional `cbcsv` (workflow JSON or `make_cmd.py --cbcsv`): methylation ↔ GEX barcode map for `gex_cb` column in `cells_summary.tsv`
 
 Outputs under `work/<sample>/summary/`:
 

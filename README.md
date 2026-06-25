@@ -18,7 +18,9 @@ Since the enzymatic treatment converts unmethylated cytosines (C) to thymines (T
 
 **Whitelist**: `whitelist/DD-MET5/U3CB_methylation.txt.gz` (829,440 × 17 bp cell barcodes)
 
-### Installation
+----
+
+## Installation
 
 Requires [pixi](https://pixi.sh/) on **linux-64**.
 
@@ -41,3 +43,28 @@ pixi run check-allcools-env
 ```
 
 Re-run `setup-bismark` and `setup-allcools` after `pixi install` recreates `.pixi/envs/default`.
+
+----
+
+## Running the pipeline
+
+Twelve stages from `fastp_split` through `qc_summary`; stable I/O contracts and validation posture live under [`docs/developers/`](docs/developers/).
+
+| Resource | Purpose |
+|----------|---------|
+| [`docs/developers/contracts.md`](docs/developers/contracts.md) | Stage input/output paths |
+| [`docs/developers/status.md`](docs/developers/status.md) | What is validated today |
+| [`docs/developers/chunk_model.md`](docs/developers/chunk_model.md) | Read-order vs analysis chunks, barcode modes |
+| [`workflow/dd_met5_test.json`](workflow/dd_met5_test.json) | Local / CI-style test config (methylation-only) |
+| [`workflow/dd_met5_slurm.json`](workflow/dd_met5_slurm.json) | Production Slurm config |
+| [`workflow/dd_met5_gexcb_test.json`](workflow/dd_met5_gexcb_test.json) | RNA-barcode (`gexcb`) path |
+| [`examples/`](examples/) | Example local and HPC invocations |
+
+Generate runnable scripts with the workflow driver:
+
+```bash
+pixi run python scripts/make_cmd.py --workflow-config workflow/dd_met5_test.json --stage all
+bash work/<sample>/commands/run.sh
+```
+
+Per-stage and end-to-end dry-runs (no cluster submit): `pixi run fastp-dry-run`, `pixi run e2e-dry-run`, `pixi run e2e-slurm-dry-run`. Full task list: [`AGENTS.md`](AGENTS.md).

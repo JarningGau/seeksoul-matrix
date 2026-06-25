@@ -2,6 +2,29 @@
 
 For current reliability, see [`status.md`](status.md). This file is the append-only history.
 
+## 2026-06-25 — docs consistency audit fixes (items 1,2,3,5,6,7,8)
+
+**Task:** Close audit mismatches: ALLC count filename, README navigation, workflow JSON inventory, `force_cell_num` / `cbcsv` docs, `examples/` in AGENTS tree, narrow testing guidance, `--cbcsv` on `make_cmd.py`.
+
+**Files changed:**
+- `docs/developers/contracts.md`
+- `README.md`
+- `AGENTS.md`
+- `scripts/make_cmd.py`
+- `docs/developers/logs.md`
+
+**Summary:**
+- Fixed `bam_to_allc` count sidecar path to `<barcode>_allc.gz.count.csv`; documented `expected_cell_num` / `force_cell_num` on `estimated_cells`; clarified `cbcsv` (JSON or `--cbcsv`).
+- README: “Running the pipeline” with links to docs, workflow configs, examples, dry-run tasks.
+- AGENTS: workflow JSON table, `examples/` in tree, `force_cell_num` note, testing text scoped to `make_cmd.py --version` + per-stage `--help`/`--dry-run`.
+- `make_cmd.py`: added `--cbcsv` CLI (overrides workflow JSON).
+
+**Checks performed:**
+- `pixi run python scripts/make_cmd.py --help` (shows `--cbcsv`)
+- `make_cmd.py --stage qc_summary --cbcsv data/cbcsv_test.csv --dry-run` → emitted `--cbcsv` in qc_summary command
+
+**Status:** done
+
 ## 2026-06-25 — development status map (`status.md`)
 
 **Task:** Decouple living validation posture from append-only `logs.md` into `docs/developers/status.md`.
