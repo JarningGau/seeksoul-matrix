@@ -53,3 +53,7 @@ MethSCAn algorithms are reimplemented clean-room with citation; no MethSCAn GPL 
 
 - Foreign input formats (Bismark `.cov`, methylpy, biscuit).
 - `meth_smooth`, `meth_scan`, and other downstream meth stages (separate implementation).
+
+## Validation
+
+MethSCAn `prepare` parity **passed** on `work/dd-met5-example` (50 cells, `meth_context=all`): CSR output matches reference. Default `meth_context=CG` is intentional pipeline scope (CpG-focused analysis).

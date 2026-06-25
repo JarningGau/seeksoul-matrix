@@ -351,5 +351,6 @@ Contract:
 
 - Single sample-level job; globs ALLC across analysis chunks; rejects duplicate barcodes across chunks.
 - Optional post-`qc_summary` stage; gated by workflow key `run_meth_analysis` (default `false`).
+- MethSCAn `prepare` parity validated on `work/dd-met5-example` (50 cells, all-context comparison passed).
 
 See also: [stage notes](stage_notes/allc_to_matrix.md) · [chunk model](chunk_model.md)

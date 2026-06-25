@@ -1,6 +1,6 @@
-# MethSCAn-native analysis — implementation spec (TODO)
+# MethSCAn-native analysis — implementation spec
 
-**Status:** planning only — no implementation in this revision.  
+**Status:** Phase 1 in progress — `allc_to_matrix` implemented; MethSCAn `prepare` parity passed; `meth_smooth` / `meth_scan` pending.  
 **Last updated:** 2026-06-25
 
 ## Summary
@@ -177,8 +177,8 @@ MethSCAn is **GPL-3.0-or-later**. This spec assumes a **clean-room reimplementat
 
 Use `MethSCAn/methscan/*.py` as a behavioral spec; reimplement in `scripts/lib/meth_matrix/`.
 
-- [ ] **ALLC → COO chunks → CSR** (`prepare.py`): chromosome chunking (`chunksize`, default 10 Mbp), COO temp files, CSR `indptr` construction, `int8` data values.
-- [ ] **Cell stats** (`cell_stats.csv`): `n_obs`, `n_meth`, `global_meth_frac` per cell.
+- [x] **ALLC → COO chunks → CSR** (`prepare.py`): chromosome chunking (`chunksize`, default 10 Mbp), COO temp files, CSR `indptr` construction, `int8` data values.
+- [x] **Cell stats** (`cell_stats.csv`): `n_obs`, `n_meth`, `global_meth_frac` per cell.
 - [ ] **Filter** (`filter.py`): column subset on CSR; rewrite `column_header.txt` + stats.
 - [ ] **Smooth** (`smooth.py`): tricube kernel, bandwidth default 1000 bp, optional `log1p(coverage)` weights.
 - [ ] **Shrunken residuals** (`numerics.py`): `_calc_mean_shrunken_residuals` for windowed scan/matrix.
@@ -189,12 +189,18 @@ Use `MethSCAn/methscan/*.py` as a behavioral spec; reimplement in `scripts/lib/m
 
 Document any intentional numeric deviations from MethSCAn in stage notes.
 
+**Validated deviations (`allc_to_matrix`):**
+
+- Default `meth_context=CG` filters ALLC trinucleotide context by prefix; MethSCAn `prepare` ingests all contexts.
+- Cell barcodes strip `_allc` filename suffix; MethSCAn uses full basename (`<barcode>_allc`).
+- ALLCools files have no header; MethSCAn `--input-format allc` skips the first row per file — use builtin reader or a no-header custom format.
+
 ---
 
-## Workflow / `make_cmd.py` integration (TODO)
+## Workflow / `make_cmd.py` integration
 
-- [ ] Add stage names to `ALL_STAGE_NAMES` (or a separate `METH_STAGE_SEQUENCE` appended when `run_meth_analysis: true` in workflow JSON).
-- [ ] `STAGE_REQUIRED_FIELDS`: e.g. `meth_scan` may require `chrom_size_path`; `meth_matrix` requires `vmr_regions_bed` or similar.
+- [x] `allc_to_matrix` in stage list; gated by `run_meth_analysis` (default `false`).
+- [ ] `meth_smooth`, `meth_scan`, … stage names and `STAGE_REQUIRED_FIELDS`.
 - [ ] Workflow keys (draft):
 
 | Key | Default | Used by |
@@ -211,7 +217,8 @@ Document any intentional numeric deviations from MethSCAn in stage notes.
 | `meth_matrix_cores` | `8` | parallel stages |
 | `vmr_regions_bed` | — | `meth_matrix` (optional VMR-free regions BED) |
 
-- [ ] Pixi dry-run tasks: `meth-allc-to-matrix-dry-run`, …, `meth-e2e-dry-run`.
+- [x] Pixi dry-run: `meth-allc-to-matrix-dry-run`
+- [ ] Pixi dry-run: `meth-smooth-dry-run`, `meth-scan-dry-run`, `meth-e2e-dry-run`
 - [ ] Slurm: single aggregate jobs for sample-wide stages (like `saturation`), not per analysis chunk.
 
 ---
@@ -221,19 +228,19 @@ Document any intentional numeric deviations from MethSCAn in stage notes.
 ### Phase 0 — Design lock (this document)
 
 - [x] Capture goals, I/O, stage split, and open questions.
-- [ ] Review with stakeholders; resolve open questions below.
-- [ ] Confirm phase-1 command set (scan + matrix vs scan-only MVP).
+- [x] Phase-1 command set confirmed: **scan-only MVP** first (`allc_to_matrix` → `meth_smooth` → `meth_scan`); `meth_matrix` deferred to Phase 2.
+- [ ] Review with stakeholders; resolve remaining open questions below.
 
 ### Phase 1 — Core store + VMR path (MVP)
 
-1. `scripts/lib/meth_matrix/` — ALLC reader + CSR build + tests on tiny synthetic ALLC.
-2. `scripts/allc_to_matrix.py` — gather ALLC across chunks; write `work/<sample>/meth/matrix/`.
-3. `scripts/meth_smooth.py`
-4. `scripts/meth_scan.py`
-5. `make_cmd.py` wiring + `workflow/dd_met5_test.json` optional block.
-6. Docs: `contracts.md`, `stage_notes/allc_to_matrix.md`, `stage_notes/meth_scan.md`, `status.md`, `logs.md` entry.
+1. [x] `scripts/lib/meth_matrix/` — ALLC reader + CSR build.
+2. [x] `scripts/allc_to_matrix.py` — gather ALLC across chunks; write `work/<sample>/meth/matrix/`.
+3. [ ] `scripts/meth_smooth.py`
+4. [ ] `scripts/meth_scan.py`
+5. [x] `make_cmd.py` wiring + `workflow/dd_met5_test.json` optional block (`allc_to_matrix` only).
+6. [x] Docs: `contracts.md`, `stage_notes/allc_to_matrix.md`, `status.md`, `logs.md`; [ ] `stage_notes/meth_scan.md` (pending implementation).
 
-**MVP validation:** Run builtin pipeline on `work/dd-met5-example` (50 cells); compare VMR count / top intervals vs MethSCAn run on the same cells’ ALLC files (external reference run, not CI dependency).
+**MVP validation (`prepare` / `allc_to_matrix`):** [x] MethSCAn `prepare` parity passed on `work/dd-met5-example` (50 cells, all-context). **Pending:** VMR comparison after `meth_smooth` + `meth_scan` ship.
 
 ### Phase 2 — Filter + region matrix
 
@@ -254,14 +261,14 @@ Document any intentional numeric deviations from MethSCAn in stage notes.
 
 ---
 
-## Testing strategy (TODO)
+## Testing strategy
 
 | Level | Approach |
 |-------|----------|
-| Unit | Synthetic ALLC fixtures (few cells, one chrom); CSR round-trip; ambiguous-site rules |
-| Golden | Small fixed ALLC subset compared to MethSCAn reference outputs (VMR BED, `cell_stats.csv`) — reference files in `tests/fixtures/` or external dataset doc |
-| Integration | `pixi run meth-e2e-dry-run`; local run on `dd-met5-example` after `bam_to_allc` |
-| Regression | Record VMR count, total `n_obs` sum, runtime in `logs.md` |
+| Unit | Synthetic ALLC fixtures (few cells, one chrom); CSR round-trip; ambiguous-site rules — **not yet added** |
+| Golden | MethSCAn `prepare` parity on `dd-met5-example` — **passed** (one-off local check; not in repo) |
+| Integration | `pixi run meth-allc-to-matrix-dry-run`; local run on `dd-met5-example` after `bam_to_allc` |
+| Regression | Record validation outcomes in `logs.md` when CSR logic changes |
 
 No automated test suite exists today ([`status.md`](developers/status.md)); first meth stages should add pytest under `tests/` following dbit-matrix regression style when implemented.
 

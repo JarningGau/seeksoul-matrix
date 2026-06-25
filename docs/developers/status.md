@@ -16,17 +16,18 @@ Per-stage confidence (what was actually exercised):
 - bam_to_allc: local e2e + HPC e2e; smoke on single barcode
 - saturation: local eleven-stage e2e + HPC eleven-stage e2e; algorithm review fixes applied
 - qc_summary: local real run (`work/dd-met5-example`, 50 cells); dry-run in twelve-stage driver — **needs biological sanity check**; not HPC-submitted
-- allc_to_matrix: `--help` + `make_cmd` dry-run; functional run on `work/C283_Brain_DNAme_S1` (300 cells, all-barcodes fallback) — **needs golden comparison vs MethSCAn prepare**
+- allc_to_matrix: local run on `work/dd-met5-example` (50 cells, `filtered_barcode`) + `make_cmd` dry-run; MethSCAn `prepare` parity **passed** (all-context: exact match on `dd-met5-example`). Default `meth_context=CG` is intentional (CpG-only). Also exercised on `work/C283_Brain_DNAme_S1` (300 cells); Slurm meth path not cluster-tested
 
 Workflow drivers:
 
-- methylation-only `run.sh` (`workflow/dd_met5_test.json`): twelve stages through `qc_summary` (stage script generation + local runs; full clean `run.sh` after `qc_summary` add not re-logged as one shot)
+- methylation-only `run.sh` (`workflow/dd_met5_test.json`): twelve stages through `qc_summary` (stage script generation + local runs)
+- methylation-only with `run_meth_analysis: true`: `allc_to_matrix` stage script generation validated (`meth-allc-to-matrix-dry-run`); full thirteen-stage local e2e not run
 - methylation-only `run.sbatch` (`dd_met5_test.json`): HPC submit validated through **saturation** (eleven stages at time of HPC run); `qc_summary` Slurm path not cluster-tested
 - `workflow/dd_met5_slurm.json`: Slurm command generation dry-run only; production-scale cluster submit not validated
 
 ## Partially validated / not exercised
 
-- **Meth analysis path** (`run_meth_analysis: true`): `allc_to_matrix` only; `meth_smooth` / `meth_scan` not implemented
+- **Meth analysis path** (`run_meth_analysis: true`): `allc_to_matrix` validated vs MethSCAn `prepare`; `meth_smooth` / `meth_scan` not implemented
 - **gexcb path** (`workflow/dd_met5_gexcb_test.json`): local `split_bams` → `merge_fr_bams` → `bam_to_allc` on 22 barcodes (reuses prior align BAMs); full `--stage all` from raw FASTQ not run; Slurm gexcb not tested
 - **Automated tests:** none yet (manual validation only)
 
@@ -35,7 +36,6 @@ Workflow drivers:
 - Spike-in output ([`stage_notes/demux_extract_bc.md`](stage_notes/demux_extract_bc.md))
 - Multi-barcode rescue (ambiguous HD=1 matches discarded)
 - `generate-dataset`, merged ALLC matrix, per-cell JSON/HTML reports ([`stage_notes/bam_to_allc.md`](stage_notes/bam_to_allc.md), [`stage_notes/qc_summary.md`](stage_notes/qc_summary.md))
-- MethSCAn golden-test CI dependency for `allc_to_matrix` ([`stage_notes/allc_to_matrix.md`](stage_notes/allc_to_matrix.md))
 - Sample-wide barcode union across analysis chunks in per-chunk stages ([`chunk_model.md`](chunk_model.md))
 
 ## Do not change silently

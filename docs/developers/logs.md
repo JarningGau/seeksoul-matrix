@@ -2,6 +2,23 @@
 
 For current reliability, see [`status.md`](status.md). This file is the append-only history.
 
+## 2026-06-25 — allc_to_matrix MethSCAn prepare parity (accepted)
+
+**Task:** Record acceptance that `allc_to_matrix` matches MethSCAn `prepare` on `work/dd-met5-example` (50 cells, all-context comparison).
+
+**Files changed:**
+- `docs/developers/status.md`
+- `docs/developers/contracts.md`
+- `docs/developers/stage_notes/allc_to_matrix.md`
+- `docs/methscan_builtin_spec.md`
+- `docs/developers/logs.md`
+
+**Summary:** Parity check passed. Default `meth_context=CG` documented as intentional. Benchmark script and artifacts are local-only (not version-controlled).
+
+**Status:** done
+
+**Notes:** Next: `meth_smooth` + `meth_scan`.
+
 ## 2026-06-25 — allc_to_matrix stage (MethSCAn prepare equivalent)
 
 **Task:** Integrate optional post-QC `allc_to_matrix` stage: ALLC → CSR matrix store under `meth/matrix/`.
@@ -31,9 +48,9 @@ For current reliability, see [`status.md`](status.md). This file is the append-o
 - `pixi run e2e-dry-run`
 - Functional run: `work/C283_Brain_DNAme_S1` (300 cells, chunk `AA`, all-barcodes fallback) → 56 chromosomes, total `n_obs`=43,312,128, runtime ~613 s
 
-**Status:** needs_review
+**Status:** done
 
-**Notes:** Golden comparison vs external `methscan prepare` not run (MethSCAn CLI not installed in workspace). Default `meth_context=CG` filters ALLC trinucleotide context by prefix; MethSCAn `prepare` ingests all contexts — compare with matching filter or `meth_context=all` when reference is available.
+**Notes:** C283 run used all-barcodes fallback; prefer `filtered_barcode` for production.
 
 ## 2026-06-25 — qc_summary mitochondrial CG methylation rate
 
