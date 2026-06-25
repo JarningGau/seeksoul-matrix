@@ -1,5 +1,28 @@
 # Development log
 
+For current reliability, see [`status.md`](status.md). This file is the append-only history.
+
+## 2026-06-25 — development status map (`status.md`)
+
+**Task:** Decouple living validation posture from append-only `logs.md` into `docs/developers/status.md`.
+
+**Files changed:**
+- `docs/developers/status.md` (new)
+- `docs/developers/doc-system.md`
+- `docs/developers/logs.md`
+- `AGENTS.md`
+
+**Summary:**
+- Added `status.md` as the agent-facing “current map”: per-stage validation confidence, workflow driver posture, known limitations, and contract-sensitive “do not change silently” surfaces with links to canonical docs.
+- Wired `status.md` into `doc-system.md` source-of-truth table and update rules; `AGENTS.md` now points agents to `status.md` first, slims the stage table (removed flat `validated` column), and requires `status.md` updates when validation posture changes.
+- Added header pointer from `logs.md` to `status.md`.
+
+**Checks performed:**
+- Manual review: every `Validated` bullet in `status.md` traceable to existing `logs.md` entries.
+- `pixi run e2e-dry-run` / `pixi run e2e-slurm-dry-run` → twelve-stage driver OK.
+
+**Status:** done
+
 ## 2026-06-25 — documentation modularization (contracts layering)
 
 **Task:** Split monolithic `contracts.md` into stable I/O contracts, chunk model, QC metrics, and per-stage implementation notes.

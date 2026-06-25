@@ -42,7 +42,7 @@ cd dbit-matrix && pixi install        # engineering patterns
 
 Useful references:
 
-- **seeksoul-matrix:** `docs/developers/doc-system.md` (doc layout and update rules), `docs/developers/contracts.md` (stable stage I/O), `docs/developers/chunk_model.md`, `docs/developers/qc_metrics.md`, `docs/developers/stage_notes/` (implementation details), `docs/developers/logs.md` (validation log)
+- **seeksoul-matrix:** `docs/developers/doc-system.md` (doc layout and update rules), `docs/developers/contracts.md` (stable stage I/O), `docs/developers/chunk_model.md`, `docs/developers/qc_metrics.md`, `docs/developers/stage_notes/` (implementation details), `docs/developers/status.md` (current reliability map), `docs/developers/logs.md` (validation history)
 - **dbit-matrix:** `docs/developers/architecture.md`, `contracts.md`, `AGENTS.md`
 - **SeekSoulMethyl:** `README.md` (chemistry, installation), `nf/` (Nextflow workflow), `nf/bin/` (stage scripts), `docs/` (BAM dedup, reference genome)
 
@@ -92,24 +92,26 @@ bash work/<sample>/commands/run.sh
 
 Implemented stages (`scripts/make_cmd.py`; stable I/O in `docs/developers/contracts.md`, details in `docs/developers/doc-system.md`):
 
-| Stage | Scripts | Status |
-|-------|---------|--------|
-| `fastp_split` | `scripts/fastp_split.py` | **validated** |
-| `demux_extract_bc` | `scripts/demux_extract_bc.py`, `scripts/aggregate_ct_qc.py` | **validated** |
-| `regroup_shards` | `scripts/regroup_shards.py` | **validated** |
-| `bismark_align` | `scripts/bismark_align.py` | **validated** |
-| `bam_sort` | `scripts/bam_sort.py` | **validated** |
-| `count_mapped_reads` | `scripts/count_mapped_reads.py` | **validated** |
-| `estimated_cells` | `scripts/estimated_cells.py` | **validated** |
-| `split_bams` | `scripts/split_bams.py` | **validated** |
-| `merge_fr_bams` | `scripts/merge_fr_bams.py` | **validated** |
-| `bam_to_allc` | `scripts/bam_to_allc.py` | **validated** |
-| `saturation` | `scripts/saturation.py` | **validated** |
-| `qc_summary` | `scripts/qc_summary.py` | **validated** |
+| Stage | Scripts |
+|-------|---------|
+| `fastp_split` | `scripts/fastp_split.py` |
+| `demux_extract_bc` | `scripts/demux_extract_bc.py`, `scripts/aggregate_ct_qc.py` |
+| `regroup_shards` | `scripts/regroup_shards.py` |
+| `bismark_align` | `scripts/bismark_align.py` |
+| `bam_sort` | `scripts/bam_sort.py` |
+| `count_mapped_reads` | `scripts/count_mapped_reads.py` |
+| `estimated_cells` | `scripts/estimated_cells.py` |
+| `split_bams` | `scripts/split_bams.py` |
+| `merge_fr_bams` | `scripts/merge_fr_bams.py` |
+| `bam_to_allc` | `scripts/bam_to_allc.py` |
+| `saturation` | `scripts/saturation.py` |
+| `qc_summary` | `scripts/qc_summary.py` |
+
+Per-stage and workflow validation detail: [`docs/developers/status.md`](docs/developers/status.md).
 
 `--stage all` generates per-stage scripts under `work/<sample>/commands/` plus a driver: `run.sh` (local) or `run.sbatch` (Slurm DAG). Analysis chunks are keyed by barcode prefix (`split_fastq_prefix_bases`, default `1`); `number_of_split_parts` controls read-order demux parallelism only. Barcode selection is **mutually exclusive**: `expected_cell_num` (default 3000, methylation-only path: count → estimate → split → merge → allc → saturation → qc_summary) or `gexcb` (RNA barcodes, split → merge → allc → saturation → qc_summary). Slurm emits per-chunk sbatch files for parallel stages and aggregate jobs for `estimated_cells` / `aggregate_ct_qc`.
 
-Twelve-stage driver (`fastp_split` → `qc_summary`) with barcode-prefix analysis chunks. Methylation-only path validated locally (`run.sh`) and on HPC (`run.sbatch`; see `docs/developers/logs.md`).
+Twelve-stage driver (`fastp_split` → `qc_summary`) with barcode-prefix analysis chunks. See [`docs/developers/status.md`](docs/developers/status.md) for methylation-only and gexcb validation posture.
 
 ## Coding Style & Naming Conventions
 
@@ -123,7 +125,7 @@ Follow **dbit-matrix** engineering patterns when implementing seeksoul-matrix; c
 
 ## Testing Guidelines
 
-No automated test suite yet. `fastp_split`, `demux_extract_bc`, `regroup_shards`, `bismark_align`, `bam_sort`, `count_mapped_reads`, `estimated_cells`, `split_bams`, `merge_fr_bams`, `bam_to_allc`, `saturation`, `qc_summary`, and the twelve-stage workflow driver (`--stage all` / `run.sh` or Slurm `run.sbatch`, methylation-only path) have been manually validated locally and on HPC (see `docs/developers/logs.md`). When adding tests, follow the template's regression style in `dbit-matrix/docs/maintenance/`. Before finishing workflow changes, run relevant CLI `--help`, `--version`, and `--dry-run` (or `pixi run fastp-dry-run` / `pixi run demux-dry-run` / `pixi run regroup-dry-run` / `pixi run bismark-align-dry-run` / `pixi run bam-sort-dry-run` / `pixi run count-mapped-reads-dry-run` / `pixi run estimated-cells-dry-run` / `pixi run split-bams-dry-run` / `pixi run merge-fr-bams-dry-run` / `pixi run bam-to-allc-dry-run` / `pixi run saturation-dry-run` / `pixi run qc-summary-dry-run` / `pixi run e2e-dry-run` / `pixi run e2e-slurm-dry-run` for the workflow driver).
+No automated test suite yet. For current per-stage and workflow validation posture, see [`docs/developers/status.md`](docs/developers/status.md); historical evidence in [`docs/developers/logs.md`](docs/developers/logs.md). When adding tests, follow the template's regression style in `dbit-matrix/docs/maintenance/`. Before finishing workflow changes, run relevant CLI `--help`, `--version`, and `--dry-run` (or `pixi run fastp-dry-run` / `pixi run demux-dry-run` / `pixi run regroup-dry-run` / `pixi run bismark-align-dry-run` / `pixi run bam-sort-dry-run` / `pixi run count-mapped-reads-dry-run` / `pixi run estimated-cells-dry-run` / `pixi run split-bams-dry-run` / `pixi run merge-fr-bams-dry-run` / `pixi run bam-to-allc-dry-run` / `pixi run saturation-dry-run` / `pixi run qc-summary-dry-run` / `pixi run e2e-dry-run` / `pixi run e2e-slurm-dry-run` for the workflow driver).
 
 ## Lightweight Development Loop
 
@@ -149,7 +151,7 @@ Briefly declare the task:
 ### After editing
 
 1. Run the most relevant lightweight check available — e.g. script on a small input, one representative pipeline step, expected output files, existing tests, or generated reports/tables.
-2. Update `docs/developers/logs.md` with a short entry:
+2. Append `docs/developers/logs.md` with a short entry:
 
    - **date**
    - **task name**
@@ -159,7 +161,9 @@ Briefly declare the task:
    - **status:** `done`, `needs_review`, or `blocked`
    - **notes:** remaining risks, if any
 
-**Validation rule:** if no check was run, status must be `needs_review` (not `done`); record why.
+3. If the change affects validation posture (new check, regression, limitation, or contract-sensitive behavior), update [`docs/developers/status.md`](docs/developers/status.md) in the same change.
+
+**Validation rule:** if no check was run, status must be `needs_review` (not `done`); record why. A `logs.md` entry alone does not update the reliability map — update `status.md` when posture changes.
 
 ## Commit & Pull Request Guidelines
 

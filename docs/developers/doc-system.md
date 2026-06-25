@@ -16,6 +16,7 @@ This page defines how developer documentation should be maintained for seeksoul-
 | Read-order vs analysis chunks, gather rules, barcode-selection modes | [`chunk_model.md`](chunk_model.md) |
 | QC field definitions, demux stats schema, saturation model, summary columns | [`qc_metrics.md`](qc_metrics.md) |
 | Per-stage implementation (defaults, skip logic, toolchain, SeekSoul alignment) | [`stage_notes/`](stage_notes/) |
+| Current validation posture and known gaps | [`status.md`](status.md) |
 | Manual validation history | [`logs.md`](logs.md) |
 
 ## Update Rules
@@ -26,7 +27,8 @@ When behavior changes:
 - update [`chunk_model.md`](chunk_model.md) if chunk/shard boundaries, gather semantics, or barcode-selection routing change
 - update [`qc_metrics.md`](qc_metrics.md) if QC column names, metric definitions, or saturation/qc_summary formulas change
 - update the matching [`stage_notes/<stage>.md`](stage_notes/) if defaults, skip/re-run logic, CLI flags, or environment setup change without altering I/O paths
-- append an entry to [`logs.md`](logs.md) after implementation (date, task, files, check, status)
+- update [`status.md`](status.md) when a stage or workflow driver's reliability changes (new check, regression, new limitation, or contract-sensitive behavior shift)
+- append an entry to [`logs.md`](logs.md) after implementation (date, task, files, check, status); if the log entry's `status` is `done` and it changes validation posture, update [`status.md`](status.md) in the same change
 
 ## Writing Rules
 

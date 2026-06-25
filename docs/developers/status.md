@@ -1,0 +1,47 @@
+# Development status
+
+Living snapshot of what is reliable today. History and per-task checks: [logs.md](logs.md).
+
+## Validated
+
+Per-stage confidence (what was actually exercised):
+
+- fastp_split: local real run on `work/dd-met5-example`; dry-run + `e2e-dry-run`
+- demux_extract_bc: local real run + HPC via methylation-only Slurm DAG (`dd_met5_test.json`)
+- regroup_shards: local e2e + HPC e2e (prefix chunks `A`/`G`/`T`)
+- bismark_align: local real run; HPC compute-node submit (bowtie2 PATH fix)
+- bam_sort: local twelve-stage e2e (prefix chunks)
+- count_mapped_reads / estimated_cells: local twelve-stage e2e
+- split_bams / merge_fr_bams: local twelve-stage e2e
+- bam_to_allc: local e2e + HPC e2e; smoke on single barcode
+- saturation: local eleven-stage e2e + HPC eleven-stage e2e; algorithm review fixes applied
+- qc_summary: local real run (`work/dd-met5-example`, 50 cells); dry-run in twelve-stage driver — **needs biological sanity check**; not HPC-submitted
+
+Workflow drivers:
+
+- methylation-only `run.sh` (`workflow/dd_met5_test.json`): twelve stages through `qc_summary` (stage script generation + local runs; full clean `run.sh` after `qc_summary` add not re-logged as one shot)
+- methylation-only `run.sbatch` (`dd_met5_test.json`): HPC submit validated through **saturation** (eleven stages at time of HPC run); `qc_summary` Slurm path not cluster-tested
+- `workflow/dd_met5_slurm.json`: Slurm command generation dry-run only; production-scale cluster submit not validated
+
+## Partially validated / not exercised
+
+- **gexcb path** (`workflow/dd_met5_gexcb_test.json`): local `split_bams` → `merge_fr_bams` → `bam_to_allc` on 22 barcodes (reuses prior align BAMs); full `--stage all` from raw FASTQ not run; Slurm gexcb not tested
+- **Automated tests:** none yet (manual validation only)
+
+## Known limitations (out of scope)
+
+- Spike-in output ([`stage_notes/demux_extract_bc.md`](stage_notes/demux_extract_bc.md))
+- Multi-barcode rescue (ambiguous HD=1 matches discarded)
+- `generate-dataset`, merged ALLC matrix, per-cell JSON/HTML reports ([`stage_notes/bam_to_allc.md`](stage_notes/bam_to_allc.md), [`stage_notes/qc_summary.md`](stage_notes/qc_summary.md))
+- Sample-wide barcode union across analysis chunks in per-chunk stages ([`chunk_model.md`](chunk_model.md))
+
+## Do not change silently
+
+Contract-sensitive surfaces — update the canonical doc layer per [`doc-system.md`](doc-system.md) and bump this file if validation posture changes:
+
+| Surface | Canonical reference |
+|---------|---------------------|
+| Barcode correction (HD=1, no multi-rescue) | [`stage_notes/demux_extract_bc.md`](stage_notes/demux_extract_bc.md) |
+| `chunk_id` / analysis-chunk semantics | [`chunk_model.md`](chunk_model.md) |
+| BAM read-name format (`CB`/`UR` from demux names) | [`stage_notes/bismark_align.md`](stage_notes/bismark_align.md), [`contracts.md`](contracts.md#split_bams) |
+| `cells_summary.tsv` columns and `*_mc_rate` pooling | [`qc_metrics.md`](qc_metrics.md#cells_summarytsv) |
