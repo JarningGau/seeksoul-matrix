@@ -33,6 +33,12 @@ Single sample-level job; supports `--dry-run`.
 
 Aligned with SeekSoulMethyl `step3_merge_sc_metrics` + `step4_wgs_summary`.
 
+## Validation
+
+- Local: `work/dd-met5-example` (50 cells, `force_cell_num=50`); sixteen-stage e2e includes `qc_summary` (2026-06-25).
+- Biological sanity **passed**: CtoT≈0.997; sample CpG mc≈77%; demux funnel and align rates consistent with DD-MET5 test chemistry; `cells_summary.tsv` metrics plausible for mouse bisulfite data.
+- Slurm: aggregate `qc_summary` job in `dd_met5_test.json` DAG cluster-tested (HPC, 2026-06-25).
+
 ## Out of scope
 
 Per-cell JSON, HTML reports, or bulk merged ALLC metrics.

@@ -53,7 +53,7 @@ MethSCAn algorithms are reimplemented clean-room with citation; no MethSCAn GPL 
 
 - Foreign input formats (Bismark `.cov`, methylpy, biscuit).
 - `meth_matrix_filter` (cell filtering done in `allc_to_matrix`).
-- `meth_diff`, `meth_profile`, and other Phase 3 meth stages.
+- `meth_diff`, `meth_profile` (MethSCAn `diff` / `profile`) — not planned; see [`methscan_builtin_spec.md`](../../methscan_builtin_spec.md).
 
 ## Validation
 

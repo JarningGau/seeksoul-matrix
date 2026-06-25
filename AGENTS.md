@@ -129,7 +129,7 @@ Per-stage and workflow validation detail: [`docs/developers/status.md`](docs/dev
 
 `--stage all` generates per-stage scripts under `work/<sample>/commands/` plus a driver: `run.sh` (local) or `run.sbatch` (Slurm DAG). Analysis chunks are keyed by barcode prefix (`split_fastq_prefix_bases`, default `1`); `number_of_split_parts` controls read-order demux parallelism only. Barcode selection is **mutually exclusive**: `expected_cell_num` (default 3000, methylation-only path: count → estimate → split → merge → allc → saturation → qc_summary) or `gexcb` (RNA barcodes, split → merge → allc → saturation → qc_summary). Optional `force_cell_num` in workflow JSON takes top N barcodes by `aligned_reads` and overrides `expected_cell_num` threshold filtering in `estimated_cells`. Slurm emits per-chunk sbatch files for parallel stages and aggregate jobs for `estimated_cells` / `aggregate_ct_qc`.
 
-Twelve-stage driver (`fastp_split` → `qc_summary`) with barcode-prefix analysis chunks. See [`docs/developers/status.md`](docs/developers/status.md) for methylation-only and gexcb validation posture.
+Twelve-stage driver (`fastp_split` → `qc_summary`) with barcode-prefix analysis chunks; optional meth analysis adds up to four stages through `meth_matrix` (`run_meth_analysis`, `run_meth_matrix`). MethSCAn `diff` / `profile` are out of scope. See [`docs/developers/status.md`](docs/developers/status.md) for methylation-only and gexcb validation posture.
 
 ## Coding Style & Naming Conventions
 

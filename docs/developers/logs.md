@@ -2,6 +2,32 @@
 
 For current reliability, see [`status.md`](status.md). This file is the append-only history.
 
+## 2026-06-25 — sixteen-stage local e2e + qc_summary validation + Phase 3 scope lock
+
+**Task:** Record sixteen-stage local e2e pass; accept `qc_summary` biological sanity check; confirm `qc_summary` Slurm cluster test; document that Phase 3 (`meth_diff` / `meth_profile`) is out of scope.
+
+**Files changed:**
+- `docs/developers/status.md`
+- `docs/developers/logs.md`
+- `docs/methscan_builtin_spec.md`
+- `docs/developers/stage_notes/qc_summary.md`
+- `docs/developers/stage_notes/allc_to_matrix.md`
+
+**Summary:**
+- Sixteen-stage local e2e on `work/dd-met5-example` via `make_cmd --stage all --run-meth-analysis --run-meth-matrix --submit`: all stages exit 0 (~10 min); 50 cells, 2 VMRs (chr2), sparse `meth/regions/vmrs/`.
+- `qc_summary` biological sanity **passed**: CtoT≈0.997, sample CpG mc≈77%, demux/align/saturation metrics consistent with prior DD-MET5 test runs; `cells_summary.tsv` 50 rows.
+- `qc_summary` Slurm path **passed** on HPC (`dd_met5_test.json` DAG through stage 12; user-reported cluster submit).
+- Phase 3 (`meth_diff`, `meth_profile`) marked **not planned**; meth analysis delivery complete at `meth_matrix`.
+
+**Checks performed:**
+- Local: `pixi run python scripts/make_cmd.py --workflow-config workflow/dd_met5_test.json --stage all --run-meth-analysis --run-meth-matrix --submit` (exit 0)
+- Output spot-check: `summary/sample_summary.tsv`, `meth/vmr/vmrs.bed`, `meth/regions/vmrs/matrix.mtx.gz`
+- HPC: `qc_summary` Slurm job (user-reported)
+
+**Status:** done
+
+**Notes:** Meth analysis stages (`allc_to_matrix` → `meth_matrix`) on Slurm remain dry-run validated only. Production-scale `dd_met5_slurm.json` cluster submit still not validated.
+
 ## 2026-06-25 — meth_matrix Phase 2 (sparse default)
 
 **Task:** Implement `meth_matrix` stage with sparse output default; skip `meth_matrix_filter`; wire workflow driver.
