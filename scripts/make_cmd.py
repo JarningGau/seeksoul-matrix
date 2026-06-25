@@ -36,7 +36,14 @@ POST_BAM_SORT_GEXCB = [
     "saturation",
     "qc_summary",
 ]
-ALL_STAGE_NAMES = [*BASE_STAGE_SEQUENCE, *POST_BAM_SORT_METHY_ONLY]
+METH_STAGE_SEQUENCE = [
+    "allc_to_matrix",
+]
+ALL_STAGE_NAMES = [
+    *BASE_STAGE_SEQUENCE,
+    *POST_BAM_SORT_METHY_ONLY,
+    *METH_STAGE_SEQUENCE,
+]
 STAGE_CHOICES = [*ALL_STAGE_NAMES, "all"]
 SLURM_NEST_STAGE_KEYS = frozenset(ALL_STAGE_NAMES)
 STAGE_REQUIRED_FIELDS = {
@@ -52,17 +59,24 @@ STAGE_REQUIRED_FIELDS = {
     "bam_to_allc": ["genome_fa", "chrom_size_path"],
     "saturation": ["chrom_size_path"],
     "qc_summary": [],
+    "allc_to_matrix": [],
 }
 DEFAULT_BARCODE_WHITELIST = "whitelist/DD-MET5/U3CB_methylation.txt.gz"
 DEFAULT_EXPECTED_CELL_NUM = 3000
 DEFAULT_SPLIT_FASTQ_PREFIX_BASES = 1
+DEFAULT_METH_CONTEXT = "CG"
+DEFAULT_METH_CHUNKSIZE = 10_000_000
 
 
 def build_stage_sequence(settings: dict) -> list[str]:
     mode = settings.get("_barcode_mode") or wic.resolve_barcode_mode(settings)
     if mode == "gexcb":
-        return [*BASE_STAGE_SEQUENCE, *POST_BAM_SORT_GEXCB]
-    return [*BASE_STAGE_SEQUENCE, *POST_BAM_SORT_METHY_ONLY]
+        sequence = [*BASE_STAGE_SEQUENCE, *POST_BAM_SORT_GEXCB]
+    else:
+        sequence = [*BASE_STAGE_SEQUENCE, *POST_BAM_SORT_METHY_ONLY]
+    if settings.get("run_meth_analysis"):
+        sequence = [*sequence, *METH_STAGE_SEQUENCE]
+    return sequence
 
 
 def stage_prefix_map(stage_sequence: list[str]) -> dict[str, str]:
@@ -72,7 +86,10 @@ def stage_prefix_map(stage_sequence: list[str]) -> dict[str, str]:
 def stage_script_name(
     settings: dict, stage_name: str, *, suffix: str = "sh", chunk_id: str = ""
 ) -> str:
-    prefix = stage_prefix_map(build_stage_sequence(settings))[stage_name]
+    sequence = build_stage_sequence(settings)
+    if stage_name not in sequence and stage_name in METH_STAGE_SEQUENCE:
+        sequence = [*sequence, stage_name]
+    prefix = stage_prefix_map(sequence)[stage_name]
     chunk_part = f"_{chunk_id}" if chunk_id else ""
     return f"{prefix}_{stage_name}{chunk_part}.{suffix}"
 
@@ -297,6 +314,41 @@ def parse_args() -> argparse.Namespace:
             "Comma-separated mitochondrial contigs for qc_summary mito_CG_mc_rate. "
             "Default: chrM. Overrides workflow JSON mito_chromosomes when set."
         ),
+    )
+    parser.add_argument(
+        "--run-meth-analysis",
+        action="store_true",
+        default=None,
+        help="Append optional meth analysis stages (allc_to_matrix) after qc_summary.",
+    )
+    parser.add_argument(
+        "--allc-to-matrix-script",
+        help="Path to allc_to_matrix script. Default: scripts/allc_to_matrix.py.",
+    )
+    parser.add_argument(
+        "--meth-context",
+        help=f"ALLC context filter for allc_to_matrix. Default: {DEFAULT_METH_CONTEXT}.",
+    )
+    parser.add_argument(
+        "--meth-chunksize",
+        type=int,
+        help=f"COO chunk size for allc_to_matrix. Default: {DEFAULT_METH_CHUNKSIZE}.",
+    )
+    parser.add_argument(
+        "--meth-round-sites",
+        action="store_true",
+        default=None,
+        help="Round ambiguous ALLC sites in allc_to_matrix.",
+    )
+    parser.add_argument(
+        "--meth-main-chroms-only",
+        action="store_true",
+        default=None,
+        help="Restrict allc_to_matrix to main chromosomes only.",
+    )
+    parser.add_argument(
+        "--meth-exclude-contigs",
+        help="Comma-separated contigs to exclude in allc_to_matrix.",
     )
     parser.add_argument(
         "--submit",
@@ -633,6 +685,33 @@ def build_qc_summary_command(
         command.extend(["--cbcsv", str(args.cbcsv)])
     mito_chromosomes = getattr(args, "mito_chromosomes", None) or "chrM"
     command.extend(["--mito-chromosomes", str(mito_chromosomes)])
+    return quoted(command)
+
+
+def build_allc_to_matrix_command(
+    args: argparse.Namespace,
+    sample_work: Path,
+    *,
+    barcode_mode: str,
+) -> str:
+    command = [
+        sys.executable,
+        str(args.allc_to_matrix_script),
+        "--work-path",
+        str(sample_work),
+        "--barcode-mode",
+        "gexcb" if barcode_mode == "gexcb" else "methylation_only",
+        "--meth-context",
+        str(args.meth_context),
+        "--chunksize",
+        str(args.meth_chunksize),
+    ]
+    if args.meth_round_sites:
+        command.append("--round-sites")
+    if args.meth_main_chroms_only:
+        command.append("--main-chroms-only")
+    if getattr(args, "meth_exclude_contigs", None):
+        command.extend(["--exclude-contigs", str(args.meth_exclude_contigs)])
     return quoted(command)
 
 
@@ -1065,6 +1144,16 @@ def validate_inputs_for_stage(
             reads_path = sample_work / "cells" / "filtered_barcode_read_counts.csv"
             if not reads_path.is_file():
                 raise FileNotFoundError(f"cell reads table not found: {reads_path}")
+    elif stage == "allc_to_matrix":
+        script_path = Path(settings["allc_to_matrix_script"])
+        if not script_path.is_file():
+            raise FileNotFoundError(f"allc_to_matrix_script not found: {script_path}")
+        allcools_dir = sample_work / "allcools"
+        allc_files = list(allcools_dir.glob("*_merged_fr_bam_allcools/*_allc.gz"))
+        if not allc_files:
+            raise FileNotFoundError(
+                f"no per-cell ALLC files found under {allcools_dir}"
+            )
     else:
         raise ValueError(f"unsupported stage for input validation: {stage}")
 
@@ -1158,6 +1247,29 @@ def resolve_settings(args: argparse.Namespace) -> dict:
         "qc_summary_script": pick(args.qc_summary_script, cfg.get("qc_summary_script")),
         "cbcsv": pick(args.cbcsv, cfg.get("cbcsv")),
         "mito_chromosomes": pick(args.mito_chromosomes, cfg.get("mito_chromosomes")),
+        "run_meth_analysis": (
+            args.run_meth_analysis
+            if args.run_meth_analysis is not None
+            else bool(cfg.get("run_meth_analysis"))
+        ),
+        "allc_to_matrix_script": pick(
+            args.allc_to_matrix_script, cfg.get("allc_to_matrix_script")
+        ),
+        "meth_context": pick(args.meth_context, cfg.get("meth_context")),
+        "meth_chunksize": pick(args.meth_chunksize, cfg.get("meth_chunksize")),
+        "meth_round_sites": (
+            args.meth_round_sites
+            if args.meth_round_sites is not None
+            else bool(cfg.get("meth_round_sites"))
+        ),
+        "meth_main_chroms_only": (
+            args.meth_main_chroms_only
+            if args.meth_main_chroms_only is not None
+            else bool(cfg.get("meth_main_chroms_only"))
+        ),
+        "meth_exclude_contigs": pick(
+            args.meth_exclude_contigs, cfg.get("meth_exclude_contigs")
+        ),
         "slurm_partition": pick(args.slurm_partition, stage_slurm_cfg.get("partition")),
         "slurm_mem": pick(args.slurm_mem, stage_slurm_cfg.get("mem")),
         "slurm_cpus_per_task": pick(
@@ -1266,6 +1378,21 @@ def resolve_settings(args: argparse.Namespace) -> dict:
             settings["qc_summary_script"] or "scripts/qc_summary.py"
         )
         settings["mito_chromosomes"] = settings["mito_chromosomes"] or "chrM"
+    if stage in ("allc_to_matrix", "all") or settings.get("run_meth_analysis"):
+        settings["allc_to_matrix_script"] = (
+            settings["allc_to_matrix_script"] or "scripts/allc_to_matrix.py"
+        )
+        settings["meth_context"] = settings["meth_context"] or DEFAULT_METH_CONTEXT
+        settings["meth_chunksize"] = int(
+            settings["meth_chunksize"]
+            if settings["meth_chunksize"] is not None
+            else DEFAULT_METH_CHUNKSIZE
+        )
+        if settings["meth_chunksize"] <= 0:
+            raise ValueError("meth_chunksize must be > 0")
+        settings["meth_round_sites"] = bool(settings["meth_round_sites"])
+        settings["meth_main_chroms_only"] = bool(settings["meth_main_chroms_only"])
+        settings["meth_exclude_contigs"] = settings["meth_exclude_contigs"] or ""
     settings["_stage_sequence"] = build_stage_sequence(settings)
     if stage in ("count_mapped_reads", "estimated_cells") and settings["_barcode_mode"] == "gexcb":
         raise ValueError(
@@ -1512,6 +1639,12 @@ def driver_scripts_for_stage(
             script
             for script in scripts
             if script.name.startswith(f"{prefix}_qc_summary")
+        ]
+    if stage_name == "allc_to_matrix":
+        return [
+            script
+            for script in scripts
+            if script.name.startswith(f"{prefix}_allc_to_matrix")
         ]
     return scripts
 
@@ -2417,6 +2550,50 @@ def main() -> int:
                 ),
                 slurm_error=settings["slurm_error"].replace(
                     "%x", f"seeksoul_qc_summary_{settings['sample_id']}"
+                ),
+            )
+            generate_slurm_script(command, script_path, log_dir, slurm_args)
+        generated_scripts.append(script_path)
+    elif settings["stage"] == "allc_to_matrix":
+        command_args = argparse.Namespace(
+            allc_to_matrix_script=settings["allc_to_matrix_script"],
+            meth_context=settings["meth_context"],
+            meth_chunksize=settings["meth_chunksize"],
+            meth_round_sites=settings["meth_round_sites"],
+            meth_main_chroms_only=settings["meth_main_chroms_only"],
+            meth_exclude_contigs=settings["meth_exclude_contigs"],
+        )
+        command = build_allc_to_matrix_command(
+            command_args,
+            sample_work,
+            barcode_mode=settings["_barcode_mode"],
+        )
+        if settings["runner"] == "local":
+            script_path = command_dir / stage_script_name(settings, "allc_to_matrix")
+        else:
+            script_path = command_dir / stage_script_name(
+                settings, "allc_to_matrix", suffix="sbatch"
+            )
+        print(f"[make_cmd] runner={settings['runner']}")
+        print(f"[make_cmd] stage={settings['stage']}")
+        print(f"[make_cmd] sample_id={settings['sample_id']}")
+        print(f"[make_cmd] script={script_path}")
+        print(f"[make_cmd] command={command}")
+        if settings["dry_run"]:
+            return 0
+        if settings["runner"] == "local":
+            generate_local_script(command, script_path)
+        else:
+            slurm_args = argparse.Namespace(
+                job_name=f"seeksoul_allc_to_matrix_{settings['sample_id']}",
+                slurm_partition=settings["slurm_partition"],
+                slurm_mem=settings["slurm_mem"],
+                slurm_cpus_per_task=settings["slurm_cpus_per_task"],
+                slurm_output=settings["slurm_output"].replace(
+                    "%x", f"seeksoul_allc_to_matrix_{settings['sample_id']}"
+                ),
+                slurm_error=settings["slurm_error"].replace(
+                    "%x", f"seeksoul_allc_to_matrix_{settings['sample_id']}"
                 ),
             )
             generate_slurm_script(command, script_path, log_dir, slurm_args)

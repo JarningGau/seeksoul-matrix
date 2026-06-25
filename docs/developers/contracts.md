@@ -314,3 +314,42 @@ Contract:
 - `cells_summary.tsv`: one row per called cell; `sample_summary.tsv` and `wgs_summary.csv`: one row per sample.
 
 See also: [stage notes](stage_notes/qc_summary.md) · [chunk model](chunk_model.md) · [QC metrics](qc_metrics.md)
+
+### `allc_to_matrix` {#allc_to_matrix}
+
+Purpose: convert per-cell ALLC into a MethSCAn-compatible CSR sparse matrix store for downstream methylation analysis.
+
+Inputs:
+
+- `work/<sample>/allcools/<chunk>_merged_fr_bam_allcools/<barcode>_allc.gz` (gather across analysis chunks)
+- optional barcode list (**one of**):
+  - `--cell-names` / explicit file
+  - `work/<sample>/cells/filtered_barcode` (methylation-only path)
+  - `work/<sample>/split_bams/merged/*_merge_filtered_barcode` (gexcb path)
+  - if none present: all discovered ALLC barcodes (warning logged)
+
+Workflow keys (when enabled via `run_meth_analysis`):
+
+| Key | Default |
+|-----|---------|
+| `meth_context` | `CG` |
+| `meth_chunksize` | `10000000` |
+| `meth_round_sites` | `false` |
+| `meth_main_chroms_only` | `false` |
+| `meth_exclude_contigs` | `""` |
+
+Outputs under `work/<sample>/meth/matrix/`:
+
+| Path | Description |
+|------|-------------|
+| `{chrom}.npz` | CSR sparse matrix (`int8`: +1 methylated, -1 unmethylated) |
+| `column_header.txt` | one cell barcode per line |
+| `cell_stats.csv` | `cell_name`, `n_obs`, `n_meth`, `global_meth_frac` |
+| `run_info.json` | stage parameters and runtime metadata |
+
+Contract:
+
+- Single sample-level job; globs ALLC across analysis chunks; rejects duplicate barcodes across chunks.
+- Optional post-`qc_summary` stage; gated by workflow key `run_meth_analysis` (default `false`).
+
+See also: [stage notes](stage_notes/allc_to_matrix.md) · [chunk model](chunk_model.md)

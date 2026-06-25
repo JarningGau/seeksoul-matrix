@@ -2,6 +2,39 @@
 
 For current reliability, see [`status.md`](status.md). This file is the append-only history.
 
+## 2026-06-25 — allc_to_matrix stage (MethSCAn prepare equivalent)
+
+**Task:** Integrate optional post-QC `allc_to_matrix` stage: ALLC → CSR matrix store under `meth/matrix/`.
+
+**Files changed:**
+- `scripts/lib/meth_matrix/` (`__init__.py`, `allc.py`, `store.py`)
+- `scripts/lib/__init__.py`
+- `scripts/allc_to_matrix.py`
+- `scripts/make_cmd.py`
+- `pixi.toml`, `pixi.lock`
+- `workflow/dd_met5_test.json`
+- `docs/developers/contracts.md`
+- `docs/developers/stage_notes/allc_to_matrix.md`
+- `docs/developers/status.md`
+
+**Summary:**
+- Clean-room port of MethSCAn `prepare`: per-cell ALLC gather, CG-prefix context filter, COO chunking, CSR `{chrom}.npz`, `column_header.txt`, `cell_stats.csv`, `run_info.json`.
+- Production gather from `allcools/*_merged_fr_bam_allcools/*_allc.gz`; barcode list optional with all-discovered fallback.
+- `make_cmd.py` wiring gated by `run_meth_analysis` (default `false`); stage prefix `13_` when run standalone.
+- Added `numpy`, `scipy`, `pandas`, `numba` to root pixi env.
+
+**Checks performed:**
+- `pixi install`
+- `pixi run python scripts/allc_to_matrix.py --help`
+- `pixi run python scripts/allc_to_matrix.py --work-path work/C283_Brain_DNAme_S1 --dry-run`
+- `pixi run meth-allc-to-matrix-dry-run`
+- `pixi run e2e-dry-run`
+- Functional run: `work/C283_Brain_DNAme_S1` (300 cells, chunk `AA`, all-barcodes fallback) → 56 chromosomes, total `n_obs`=43,312,128, runtime ~613 s
+
+**Status:** needs_review
+
+**Notes:** Golden comparison vs external `methscan prepare` not run (MethSCAn CLI not installed in workspace). Default `meth_context=CG` filters ALLC trinucleotide context by prefix; MethSCAn `prepare` ingests all contexts — compare with matching filter or `meth_context=all` when reference is available.
+
 ## 2026-06-25 — qc_summary mitochondrial CG methylation rate
 
 **Task:** Add sample-level and cell-level `mito_CG_mc_rate` to `qc_summary` output tables.

@@ -88,6 +88,17 @@
             "partition": "amd-ep2",
             "mem": "2G",
             "cpus_per_task": 1
+        },
+        "allc_to_matrix": {
+            "partition": "amd-ep2",
+            "mem": "16G",
+            "cpus_per_task": 4
         }
-    }
+    },
+    "run_meth_analysis": false,
+    "meth_context": "CG",
+    "meth_chunksize": 10000000,
+    "meth_round_sites": false,
+    "meth_main_chroms_only": false,
+    "meth_exclude_contigs": ""
 }
