@@ -27,11 +27,14 @@ Workflow drivers:
 - methylation-only with `run_meth_analysis: true`: fifteen-stage script generation validated (`meth-e2e-dry-run`: `allc_to_matrix` → `meth_smooth` → `meth_scan`)
 - methylation-only with `run_meth_analysis` + `run_meth_matrix`: sixteen-stage local e2e **passed** (`make_cmd --submit` on `work/dd-met5-example`, ~10 min; 50 cells, 2 VMRs, sparse region matrix)
 - methylation-only `run.sbatch` (`dd_met5_test.json`): HPC submit validated through **qc_summary** (twelve stages); meth analysis Slurm paths dry-run only
+- **gexcb** `run.sh` (`workflow/dd_met5_gexcb_test.json`): ten-stage local e2e **passed** (`make_cmd --stage all --submit` from raw FASTQ, ~6 min; 22 RNA barcodes, CtoT≈0.997, CpG mc≈77%); workflow JSON aligned with `dd_met5_test.json` resource/meth keys (except `gexcb` barcode mode)
+- **gexcb + meth analysis** (`dd_met5_gexcb_test.json` with `--run-meth-analysis --run-meth-matrix`): fourteen-stage local e2e **passed** (10 base + 4 meth on `work/dd-met5-example`; 22 cells, 1 VMR chr2, sparse region matrix; `meth_scan_min_cells=2` for small gexcb cohort)
 - `workflow/dd_met5_slurm.json`: Slurm command generation dry-run only; production-scale cluster submit not validated
 
 ## Partially validated / not exercised
 
-- **gexcb path** (`workflow/dd_met5_gexcb_test.json`): local `split_bams` → `merge_fr_bams` → `bam_to_allc` on 22 barcodes (reuses prior align BAMs); full `--stage all` from raw FASTQ not run; Slurm gexcb not tested
+- **gexcb Slurm path** (`dd_met5_gexcb_test.json`): not cluster-tested
+- **gexcb + meth analysis Slurm path**: dry-run only
 - **Meth analysis Slurm path** (`run_meth_analysis: true`): command generation dry-run only; sixteen-stage cluster submit not validated
 - **Automated tests:** none yet (manual validation only)
 

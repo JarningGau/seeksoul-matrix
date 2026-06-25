@@ -2,6 +2,50 @@
 
 For current reliability, see [`status.md`](status.md). This file is the append-only history.
 
+## 2026-06-25 — gexcb fourteen-stage local e2e (base + meth analysis)
+
+**Task:** Run gexcb + meth analysis local e2e on `work/dd-met5-example` after ten-stage gexcb base pass.
+
+**Files changed:**
+- `workflow/dd_met5_gexcb_test.json` (`meth_scan_min_cells`: 6 → 2 for 22-cell cohort)
+- `docs/developers/status.md`
+- `docs/developers/logs.md`
+
+**Summary:**
+- Ran meth stages `allc_to_matrix` → `meth_matrix` on existing gexcb outputs (22 cells, `barcode-mode gexcb`).
+- Initial `meth_scan` failed at default `min_cells=6` (1 potential VMR, insufficient per-cell coverage); lowered `meth_scan_min_cells` to 2 in gexcb test JSON.
+- Re-run `meth_scan` + `meth_matrix`: exit 0; 1 VMR (chr2), sparse `meth/regions/vmrs/matrix.mtx.gz`.
+
+**Checks performed:**
+- `bash work/dd-met5-example/commands/11_allc_to_matrix.sh` through `14_meth_matrix.sh` (stages 11–12 + 13–14 after min_cells fix)
+- Output spot-check: `meth/vmr/vmrs.bed`, `meth/regions/vmrs/matrix.mtx.gz`, `meth/matrix/column_header.txt` (22 cells)
+
+**Status:** done
+
+**Notes:** `meth_scan_min_cells=2` is intentional for the 22-barcode gexcb test list; methylation-only e2e keeps default 6 with 50 cells. Slurm gexcb + meth paths not exercised.
+
+## 2026-06-25 — gexcb ten-stage local e2e (raw FASTQ)
+
+**Task:** Align `workflow/dd_met5_gexcb_test.json` with `dd_met5_test.json`; run full gexcb local e2e from raw FASTQ.
+
+**Files changed:**
+- `workflow/dd_met5_gexcb_test.json`
+- `docs/developers/status.md`
+- `docs/developers/logs.md`
+
+**Summary:**
+- Aligned gexcb workflow JSON with test config (resource limits, Slurm meth keys, `run_meth_analysis` / `meth_*` defaults); retained `gexcb: data/gexcb_test.txt` instead of `expected_cell_num` / `force_cell_num`.
+- Ten-stage gexcb local e2e on fresh `work/dd-met5-example` via `make_cmd --stage all --submit`: all stages exit 0 (~6 min); 22 cells (`data/gexcb_test.txt`); `cells_summary.tsv` 22 rows; CtoT≈0.997, sample CpG mc≈77%.
+
+**Checks performed:**
+- `pixi run check-bismark-env`, `check-allcools-env`
+- `pixi run python scripts/make_cmd.py --workflow-config workflow/dd_met5_gexcb_test.json --stage all --submit` (exit 0)
+- Output spot-check: `summary/sample_summary.tsv`, `split_bams/merged/*_merge_filtered_barcode` (22 total), `allcools/*_allc.gz`, `qc/saturation/saturation_curve.png`
+
+**Status:** done
+
+**Notes:** gexcb + meth analysis (`--run-meth-analysis --run-meth-matrix`) and Slurm gexcb path not exercised. Prior partial gexcb validation (split → allc reusing align BAMs) superseded by this full-path run.
+
 ## 2026-06-25 — sixteen-stage local e2e + qc_summary validation + Phase 3 scope lock
 
 **Task:** Record sixteen-stage local e2e pass; accept `qc_summary` biological sanity check; confirm `qc_summary` Slurm cluster test; document that Phase 3 (`meth_diff` / `meth_profile`) is out of scope.
