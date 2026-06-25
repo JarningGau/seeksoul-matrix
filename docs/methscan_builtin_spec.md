@@ -1,6 +1,6 @@
 # MethSCAn-native analysis — implementation spec
 
-**Status:** Phase 1 complete — `allc_to_matrix`, `meth_smooth`, `meth_scan` implemented; MethSCAn `prepare` parity passed; VMR parity pending validation run.  
+**Status:** Phase 2 complete — `meth_matrix` implemented (sparse default); `meth_matrix_filter` skipped by design.  
 **Last updated:** 2026-06-25
 
 ## Summary
@@ -101,14 +101,14 @@ bam_to_allc  →  [existing]
      ↓
 allc_to_matrix     # prepare equivalent: ALLC → CSR store
      ↓
-meth_matrix_filter # optional; may default to passthrough if cells/ already filtered
-     ↓
 meth_smooth        # pseudobulk smoothing
      ↓
 meth_scan          # VMRs (requires smooth)
      ↓
-meth_matrix        # region matrix (requires smooth; needs external BED)
+meth_matrix        # region matrix (sparse default; needs BED)
 ```
+
+`meth_matrix_filter` is **not** implemented — `allc_to_matrix` already applies `cells/filtered_barcode` (equivalent to MethSCAn `filter --cell-names`).
 
 **Phase 2 (optional):** `meth_diff`, `meth_profile` — same internal store, extra CLI inputs (cell groups CSV, regions BED).
 
@@ -118,7 +118,7 @@ Default workflow extension (not enabled until validated):
 … → qc_summary → allc_to_matrix → meth_smooth → meth_scan
 ```
 
-`meth_matrix_filter` and `meth_matrix` are on-demand or workflow-flagged (`run_meth_matrix: true`, `vmr_regions_bed: …`).
+`meth_matrix` is on-demand or workflow-flagged (`run_meth_matrix: true`, optional `meth_regions_bed`).
 
 ### Output layout (draft contract)
 
@@ -127,14 +127,13 @@ Under `work/<sample>/meth/`:
 | Path | Producer | Description |
 |------|----------|-------------|
 | `matrix/` | `allc_to_matrix` | `{chrom}.npz` (CSR), `column_header.txt`, `cell_stats.csv`, `run_info.json` |
-| `matrix_filtered/` | `meth_matrix_filter` | Filtered CSR store (same layout) |
-| `matrix/smoothed/` or `matrix_filtered/smoothed/` | `meth_smooth` | `{chrom}.csv.gz` smoothed pseudobulk |
+| `matrix/smoothed/` | `meth_smooth` | `{chrom}.csv.gz` smoothed pseudobulk |
 | `vmr/vmrs.bed` | `meth_scan` | VMR intervals |
-| `regions/<label>/` | `meth_matrix` | `methylated_sites.csv.gz`, `total_sites.csv.gz`, `methylation_fractions.csv.gz`, `mean_shrunken_residuals.csv.gz` |
+| `regions/<label>/` | `meth_matrix` | **sparse default:** `matrix.mtx.gz`, `features.tsv.gz`, `barcodes.tsv.gz`; **dense optional:** four `.csv.gz` count/fraction tables |
 | `dmr/` | `meth_diff` | DMR BED (phase 2) |
 | `profile/` | `meth_profile` | Profile CSV (phase 2) |
 
-Use `matrix_filtered/` when filtering runs; downstream stages take `--data-dir` pointing at the active store. Exact paths become normative in `contracts.md` at implementation time.
+Use `matrix/` as the active store; downstream stages take `--data-dir` pointing at `meth/matrix/` when overriding. Exact paths are normative in `contracts.md`.
 
 ### Shared library vs monolithic scripts
 
@@ -143,7 +142,6 @@ Follow dbit-matrix “thin stage script” pattern:
 ```
 scripts/
   allc_to_matrix.py
-  meth_matrix_filter.py
   meth_smooth.py
   meth_scan.py
   meth_matrix.py
@@ -179,11 +177,11 @@ Use `MethSCAn/methscan/*.py` as a behavioral spec; reimplement in `scripts/lib/m
 
 - [x] **ALLC → COO chunks → CSR** (`prepare.py`): chromosome chunking (`chunksize`, default 10 Mbp), COO temp files, CSR `indptr` construction, `int8` data values.
 - [x] **Cell stats** (`cell_stats.csv`): `n_obs`, `n_meth`, `global_meth_frac` per cell.
-- [ ] **Filter** (`filter.py`): column subset on CSR; rewrite `column_header.txt` + stats.
+- [x] **Filter** (`filter.py`): **skipped** — cell selection in `allc_to_matrix` via `filtered_barcode`.
 - [x] **Smooth** (`smooth.py`): tricube kernel, bandwidth default 1000 bp, optional `log1p(coverage)` weights.
 - [x] **Shrunken residuals** (`numerics.py`): `calc_mean_shrunken_residuals` for windowed scan/matrix.
 - [x] **Scan** (`scan.py`): sliding window (default bw 2000, step 100), variance threshold (default 0.02), `min_cells` (default 6), optional `bridge_gaps`, parallel over chromosomes.
-- [ ] **Matrix** (`matrix.py`): per-region counts / fractions / mean shrunken residuals; optional sparse `.mtx.gz` output.
+- [x] **Matrix** (`matrix.py`): per-region counts / fractions / mean shrunken residuals; **sparse default** (`matrix.mtx.gz`); dense four-table mode via `--dense`.
 - [ ] **Diff** (`diff.py`, phase 2): t-test windows, permutation FDR, two groups only.
 - [ ] **Profile** (`profile.py`, phase 2): fixed-width profiles around sorted BED regions.
 
@@ -215,10 +213,14 @@ Document any intentional numeric deviations from MethSCAn in stage notes.
 | `meth_scan_var_threshold` | `0.02` | `meth_scan` |
 | `meth_scan_min_cells` | `6` | `meth_scan` |
 | `meth_matrix_cores` | `8` | parallel stages |
-| `vmr_regions_bed` | — | `meth_matrix` (optional VMR-free regions BED) |
+| `run_meth_matrix` | `false` | append `meth_matrix` after `meth_scan` |
+| `meth_regions_bed` | `""` | explicit BED; fallback `meth/vmr/vmrs.bed` |
+| `meth_regions_label` | `""` | output label under `meth/regions/` |
+| `meth_matrix_dense` | `false` | dense four-table output when `true` |
 
 - [x] Pixi dry-run: `meth-allc-to-matrix-dry-run`
-- [x] Pixi dry-run: `meth-smooth-dry-run`, `meth-scan-dry-run`, `meth-e2e-dry-run`
+- [x] Pixi dry-run: `meth-matrix-dry-run`
+- [x] Pixi dry-run: `meth-e2e-dry-run` (includes `meth_matrix` when `run_meth_matrix: true`)
 - [ ] Slurm: single aggregate jobs for sample-wide stages (like `saturation`), not per analysis chunk.
 
 ---
@@ -242,11 +244,14 @@ Document any intentional numeric deviations from MethSCAn in stage notes.
 
 **MVP validation (`prepare` / `allc_to_matrix`):** [x] MethSCAn `prepare` parity passed on `work/dd-met5-example` (50 cells, all-context). **MVP validation (`smooth` / `scan`):** [x] MethSCAn v1.1.0 parity passed on `work/dd-met5-example` (50 cells, CG): smooth exact; scan 2 VMRs exact BED match.
 
-### Phase 2 — Filter + region matrix
+### Phase 2 — Region matrix (complete)
 
-1. `scripts/meth_matrix_filter.py` — integrate with `cells/filtered_barcode` as default `--cell-names` source.
-2. `scripts/meth_matrix.py` — user-supplied BED (promoters, VMRs from phase 1, etc.).
-3. Workflow keys for filter thresholds vs passthrough.
+1. [x] **Skip** `meth_matrix_filter` — `allc_to_matrix` uses `cells/filtered_barcode`.
+2. [x] `scripts/meth_matrix.py` — BED-driven region matrices; **sparse default**; explicit BED or `vmrs.bed` fallback.
+3. [x] Workflow keys: `run_meth_matrix`, `meth_regions_bed`, `meth_regions_label`, `meth_matrix_dense`.
+4. [x] Docs: `contracts.md`, `stage_notes/meth_matrix.md`, `status.md`, `logs.md`.
+
+**Phase 2 validation:** MethSCAn `matrix --sparse` parity passed on `work/dd-met5-example` (2 VMRs, 19 non-zero entries).
 
 ### Phase 3 — DMR + profile
 
@@ -277,9 +282,9 @@ No automated test suite exists today ([`status.md`](developers/status.md)); firs
 ## Open questions
 
 1. **Default context:** CG-only for v1, or configurable CHG/CHH for non-CpG assays?
-2. **Filter duplication:** Skip `meth_matrix_filter` when `estimated_cells` already ran, or always expose MethSCAn-style site/meth thresholds for analysis QC?
+2. **Filter duplication:** Resolved — skip `meth_matrix_filter`; `allc_to_matrix` applies `filtered_barcode`.
 3. **Stage naming:** Prefer `allc_to_matrix` vs `meth_prepare` for consistency with MethSCAn vocabulary?
-4. **VMR regions for clustering:** Auto-run `meth_scan` → feed `vmr/vmrs.bed` into `meth_matrix`, or require explicit BED path?
+4. **VMR regions for clustering:** Resolved — explicit `meth_regions_bed` first; fallback to `meth/vmr/vmrs.bed`.
 5. **GPL:** Confirm clean-room policy with maintainers before copying numba kernels verbatim.
 6. **gexcb:** Same meth stages for gexcb path with merged barcode gather — any RNA-specific QC joins needed?
 

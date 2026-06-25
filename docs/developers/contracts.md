@@ -418,3 +418,53 @@ Contract:
 - Fails if no VMR passes `--min-cells`.
 
 See also: [stage notes](stage_notes/meth_scan.md) · [chunk model](chunk_model.md)
+
+### `meth_matrix` {#meth_matrix}
+
+Purpose: per-region methylation matrices for clustering / downstream analysis (MethSCAn `matrix` equivalent). **Default output is sparse** (`matrix.mtx.gz`); dense four-table mode is optional.
+
+Inputs:
+
+- `work/<sample>/meth/matrix/{chrom}.npz`
+- `work/<sample>/meth/matrix/smoothed/{chrom}.csv.gz`
+- BED regions: workflow key `meth_regions_bed`, or fallback `work/<sample>/meth/vmr/vmrs.bed`
+
+Workflow keys (when enabled via `run_meth_analysis` + `run_meth_matrix`):
+
+| Key | Default |
+|-----|---------|
+| `run_meth_matrix` | `false` |
+| `meth_regions_bed` | `""` (fallback: `meth/vmr/vmrs.bed` when file exists) |
+| `meth_regions_label` | `""` (default: BED basename) |
+| `meth_matrix_dense` | `false` |
+| `meth_matrix_cores` | `8` |
+
+Outputs under `work/<sample>/meth/regions/<label>/`:
+
+**Sparse (default):**
+
+| Path | Description |
+|------|-------------|
+| `matrix.mtx.gz` | non-zero cell×region entries: `row_i col_i residuals mfracs coverage` (1-indexed, no header) |
+| `features.tsv.gz` | region names (`{chrom}:{start}-{end}`), one per line |
+| `barcodes.tsv.gz` | cell barcodes, one per line |
+| `run_info.json` | `output_format: sparse`, BED path, counts, runtime |
+
+**Dense (`meth_matrix_dense: true` or `--dense`):**
+
+| Path | Description |
+|------|-------------|
+| `methylated_sites.csv.gz` | methylated site counts (cells × regions) |
+| `total_sites.csv.gz` | observed site counts |
+| `methylation_fractions.csv.gz` | `n_meth / n_total` |
+| `mean_shrunken_residuals.csv.gz` | mean shrunken residuals |
+| `run_info.json` | `output_format: dense` |
+
+Contract:
+
+- Single sample-level job; requires prior `meth_smooth` output.
+- `meth_matrix_filter` is **not** a separate stage — cell selection is performed in `allc_to_matrix` via `cells/filtered_barcode`.
+- `run_meth_matrix` requires `run_meth_analysis: true` in workflow JSON.
+- Fails if no BED is resolved and `vmrs.bed` is absent.
+
+See also: [stage notes](stage_notes/meth_matrix.md) · [chunk model](chunk_model.md)

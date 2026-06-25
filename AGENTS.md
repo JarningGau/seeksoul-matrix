@@ -62,6 +62,11 @@ pixi run merge-fr-bams-dry-run     # merge_fr_bams script generation
 pixi run bam-to-allc-dry-run       # bam_to_allc script generation
 pixi run saturation-dry-run        # saturation script generation
 pixi run qc-summary-dry-run        # qc_summary script generation
+pixi run meth-allc-to-matrix-dry-run # allc_to_matrix script generation
+pixi run meth-smooth-dry-run        # meth_smooth script generation
+pixi run meth-scan-dry-run         # meth_scan script generation
+pixi run meth-matrix-dry-run       # meth_matrix script generation
+pixi run meth-e2e-dry-run          # --stage all with run_meth_analysis + run_meth_matrix
 pixi run e2e-dry-run           # --stage all (local run.sh) dry-run
 pixi run e2e-slurm-dry-run     # --stage all (Slurm run.sbatch) dry-run
 ```
@@ -115,6 +120,10 @@ Implemented stages (`scripts/make_cmd.py`; stable I/O in `docs/developers/contra
 | `bam_to_allc` | `scripts/bam_to_allc.py` |
 | `saturation` | `scripts/saturation.py` |
 | `qc_summary` | `scripts/qc_summary.py` |
+| `allc_to_matrix` | `scripts/allc_to_matrix.py` |
+| `meth_smooth` | `scripts/meth_smooth.py` |
+| `meth_scan` | `scripts/meth_scan.py` |
+| `meth_matrix` | `scripts/meth_matrix.py` |
 
 Per-stage and workflow validation detail: [`docs/developers/status.md`](docs/developers/status.md).
 
@@ -134,7 +143,7 @@ Follow **dbit-matrix** engineering patterns when implementing seeksoul-matrix; c
 
 ## Testing Guidelines
 
-No automated test suite yet. For current per-stage and workflow validation posture, see [`docs/developers/status.md`](docs/developers/status.md); historical evidence in [`docs/developers/logs.md`](docs/developers/logs.md). When adding tests, follow the template's regression style in `dbit-matrix/docs/maintenance/`. Before finishing workflow changes, run `scripts/make_cmd.py --version`, per-stage `--help` and `--dry-run`, and the relevant `pixi run *-dry-run` tasks (`fastp-dry-run`, `demux-dry-run`, `regroup-dry-run`, `bismark-align-dry-run`, `bam-sort-dry-run`, `count-mapped-reads-dry-run`, `estimated-cells-dry-run`, `split-bams-dry-run`, `merge-fr-bams-dry-run`, `bam-to-allc-dry-run`, `saturation-dry-run`, `qc-summary-dry-run`, `e2e-dry-run`, `e2e-slurm-dry-run`).
+No automated test suite yet. For current per-stage and workflow validation posture, see [`docs/developers/status.md`](docs/developers/status.md); historical evidence in [`docs/developers/logs.md`](docs/developers/logs.md). When adding tests, follow the template's regression style in `dbit-matrix/docs/maintenance/`. Before finishing workflow changes, run `scripts/make_cmd.py --version`, per-stage `--help` and `--dry-run`, and the relevant `pixi run *-dry-run` tasks (`fastp-dry-run`, `demux-dry-run`, `regroup-dry-run`, `bismark-align-dry-run`, `bam-sort-dry-run`, `count-mapped-reads-dry-run`, `estimated-cells-dry-run`, `split-bams-dry-run`, `merge-fr-bams-dry-run`, `bam-to-allc-dry-run`, `saturation-dry-run`, `qc-summary-dry-run`, `meth-allc-to-matrix-dry-run`, `meth-smooth-dry-run`, `meth-scan-dry-run`, `meth-matrix-dry-run`, `meth-e2e-dry-run`, `e2e-dry-run`, `e2e-slurm-dry-run`).
 
 ## Lightweight Development Loop
 

@@ -2,6 +2,42 @@
 
 For current reliability, see [`status.md`](status.md). This file is the append-only history.
 
+## 2026-06-25 — meth_matrix Phase 2 (sparse default)
+
+**Task:** Implement `meth_matrix` stage with sparse output default; skip `meth_matrix_filter`; wire workflow driver.
+
+**Files changed:**
+- `scripts/lib/meth_matrix/region_matrix.py`, `scripts/lib/meth_matrix/__init__.py`
+- `scripts/meth_matrix.py`
+- `scripts/make_cmd.py`
+- `workflow/dd_met5_test.json`, `pixi.toml`
+- `docs/developers/contracts.md`
+- `docs/developers/stage_notes/meth_matrix.md`
+- `docs/methscan_builtin_spec.md`
+- `docs/developers/status.md`
+- `docs/developers/logs.md`
+- `AGENTS.md`
+
+**Summary:**
+- Clean-room port of MethSCAn `matrix` / `matrix_sparse`: BED regions → per-cell methylated/total counts, fractions, shrunken residuals.
+- **Sparse default:** `matrix.mtx.gz` + `features.tsv.gz` + `barcodes.tsv.gz` under `meth/regions/<label>/`.
+- **Dense optional:** `--dense` / `meth_matrix_dense: true` emits four `.csv.gz` tables.
+- BED resolution: explicit `meth_regions_bed` or fallback `meth/vmr/vmrs.bed`.
+- `run_meth_matrix` gated on `run_meth_analysis`; appended after `meth_scan` in stage sequence.
+- `meth_matrix_filter` not implemented — `allc_to_matrix` already uses `cells/filtered_barcode`.
+
+**Checks performed:**
+- `pixi run python scripts/meth_matrix.py --help`
+- `pixi run meth-matrix-dry-run`
+- `pixi run meth-e2e-dry-run` (16 stages with `run_meth_analysis` + `run_meth_matrix`)
+- Local sparse run: `work/dd-met5-example` → `meth/regions/vmrs/` (50 cells, 2 VMRs, 19 non-zero entries)
+- Dense smoke: `--dense --output-dir /tmp/meth_matrix_dense_test`
+- MethSCAn v1.1.0 `matrix_sparse` parity: exact match on `(row_i, col_i, mfrac)` triplets
+
+**Status:** done
+
+**Notes:** MethSCAn CLI sparse check expects uncompressed `smoothed/*.csv`; seeksoul-matrix uses `.csv.gz`. Slurm `meth_matrix` not cluster-tested.
+
 ## 2026-06-25 — pin conda-forge tbb for numba parallel layer
 
 **Task:** Fix Numba TBB threading-layer warning (`TBB_INTERFACE_VERSION = 12050` from system `/lib/x86_64-linux-gnu/libtbb.so.12`).

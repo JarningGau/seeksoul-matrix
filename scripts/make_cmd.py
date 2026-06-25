@@ -41,10 +41,14 @@ METH_STAGE_SEQUENCE = [
     "meth_smooth",
     "meth_scan",
 ]
+OPTIONAL_METH_STAGE_SEQUENCE = [
+    "meth_matrix",
+]
 ALL_STAGE_NAMES = [
     *BASE_STAGE_SEQUENCE,
     *POST_BAM_SORT_METHY_ONLY,
     *METH_STAGE_SEQUENCE,
+    *OPTIONAL_METH_STAGE_SEQUENCE,
 ]
 STAGE_CHOICES = [*ALL_STAGE_NAMES, "all"]
 SLURM_NEST_STAGE_KEYS = frozenset(ALL_STAGE_NAMES)
@@ -64,6 +68,7 @@ STAGE_REQUIRED_FIELDS = {
     "allc_to_matrix": [],
     "meth_smooth": [],
     "meth_scan": [],
+    "meth_matrix": [],
 }
 DEFAULT_BARCODE_WHITELIST = "whitelist/DD-MET5/U3CB_methylation.txt.gz"
 DEFAULT_EXPECTED_CELL_NUM = 3000
@@ -87,6 +92,8 @@ def build_stage_sequence(settings: dict) -> list[str]:
         sequence = [*BASE_STAGE_SEQUENCE, *POST_BAM_SORT_METHY_ONLY]
     if settings.get("run_meth_analysis"):
         sequence = [*sequence, *METH_STAGE_SEQUENCE]
+        if settings.get("run_meth_matrix"):
+            sequence = [*sequence, *OPTIONAL_METH_STAGE_SEQUENCE]
     return sequence
 
 
@@ -98,7 +105,10 @@ def stage_script_name(
     settings: dict, stage_name: str, *, suffix: str = "sh", chunk_id: str = ""
 ) -> str:
     sequence = build_stage_sequence(settings)
-    if stage_name not in sequence and stage_name in METH_STAGE_SEQUENCE:
+    if stage_name not in sequence and stage_name in (
+        *METH_STAGE_SEQUENCE,
+        *OPTIONAL_METH_STAGE_SEQUENCE,
+    ):
         sequence = [*sequence, stage_name]
     prefix = stage_prefix_map(sequence)[stage_name]
     chunk_part = f"_{chunk_id}" if chunk_id else ""
@@ -417,7 +427,37 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument(
         "--meth-matrix-cores",
         type=int,
-        help=f"CPU threads for meth_scan. Default: {DEFAULT_METH_MATRIX_CORES}.",
+        help=f"CPU threads for meth_scan and meth_matrix. Default: {DEFAULT_METH_MATRIX_CORES}.",
+    )
+    parser.add_argument(
+        "--run-meth-matrix",
+        action="store_true",
+        default=None,
+        help=(
+            "Append meth_matrix after meth_scan when used with --run-meth-analysis. "
+            "Requires meth analysis stages and a regions BED (explicit or vmrs.bed fallback)."
+        ),
+    )
+    parser.add_argument(
+        "--meth-matrix-script",
+        help="Path to meth_matrix script. Default: scripts/meth_matrix.py.",
+    )
+    parser.add_argument(
+        "--meth-regions-bed",
+        help=(
+            "BED file for meth_matrix region quantification. "
+            "Default: work/<sample>/meth/vmr/vmrs.bed when unset."
+        ),
+    )
+    parser.add_argument(
+        "--meth-regions-label",
+        help="Output label under meth/regions/. Default: BED basename.",
+    )
+    parser.add_argument(
+        "--meth-matrix-dense",
+        action="store_true",
+        default=None,
+        help="Write dense four-table meth_matrix output instead of sparse (default).",
     )
     parser.add_argument(
         "--submit",
@@ -817,6 +857,32 @@ def build_meth_scan_command(args: argparse.Namespace, sample_work: Path) -> str:
         "--threads",
         str(args.meth_matrix_cores),
     ]
+    return quoted(command)
+
+
+def resolve_meth_regions_bed(settings: dict, sample_work: Path) -> Path | None:
+    bed_value = settings.get("meth_regions_bed")
+    if bed_value and str(bed_value).strip():
+        return Path(str(bed_value))
+    fallback = sample_work / "meth" / "vmr" / "vmrs.bed"
+    return fallback if fallback.is_file() else None
+
+
+def build_meth_matrix_command(args: argparse.Namespace, sample_work: Path) -> str:
+    command = [
+        sys.executable,
+        str(args.meth_matrix_script),
+        "--work-path",
+        str(sample_work),
+        "--threads",
+        str(args.meth_matrix_cores),
+    ]
+    if args.meth_regions_bed and str(args.meth_regions_bed).strip():
+        command.extend(["--regions-bed", str(args.meth_regions_bed)])
+    if args.meth_regions_label and str(args.meth_regions_label).strip():
+        command.extend(["--regions-label", str(args.meth_regions_label)])
+    if args.meth_matrix_dense:
+        command.append("--dense")
     return quoted(command)
 
 
@@ -1287,6 +1353,30 @@ def validate_inputs_for_stage(
             raise FileNotFoundError(
                 f"no smoothed chromosome files found under {smoothed_dir}"
             )
+    elif stage == "meth_matrix":
+        script_path = Path(settings["meth_matrix_script"])
+        if not script_path.is_file():
+            raise FileNotFoundError(f"meth_matrix_script not found: {script_path}")
+        matrix_dir = sample_work / "meth" / "matrix"
+        npz_files = list(matrix_dir.glob("*.npz"))
+        if not npz_files:
+            raise FileNotFoundError(
+                f"no CSR matrix files found under {matrix_dir}"
+            )
+        smoothed_dir = matrix_dir / "smoothed"
+        smoothed_files = list(smoothed_dir.glob("*.csv.gz")) + list(
+            smoothed_dir.glob("*.csv")
+        )
+        if not smoothed_files:
+            raise FileNotFoundError(
+                f"no smoothed chromosome files found under {smoothed_dir}"
+            )
+        regions_bed = resolve_meth_regions_bed(settings, sample_work)
+        if regions_bed is None or not regions_bed.is_file():
+            raise FileNotFoundError(
+                "meth_matrix requires meth_regions_bed in workflow JSON or "
+                f"existing {sample_work / 'meth' / 'vmr' / 'vmrs.bed'}"
+            )
     else:
         raise ValueError(f"unsupported stage for input validation: {stage}")
 
@@ -1385,6 +1475,11 @@ def resolve_settings(args: argparse.Namespace) -> dict:
             if args.run_meth_analysis is not None
             else bool(cfg.get("run_meth_analysis"))
         ),
+        "run_meth_matrix": (
+            args.run_meth_matrix
+            if args.run_meth_matrix is not None
+            else bool(cfg.get("run_meth_matrix"))
+        ),
         "allc_to_matrix_script": pick(
             args.allc_to_matrix_script, cfg.get("allc_to_matrix_script")
         ),
@@ -1427,6 +1522,14 @@ def resolve_settings(args: argparse.Namespace) -> dict:
             args.meth_scan_bridge_gaps, cfg.get("meth_scan_bridge_gaps")
         ),
         "meth_matrix_cores": pick(args.meth_matrix_cores, cfg.get("meth_matrix_cores")),
+        "meth_matrix_script": pick(args.meth_matrix_script, cfg.get("meth_matrix_script")),
+        "meth_regions_bed": pick(args.meth_regions_bed, cfg.get("meth_regions_bed")),
+        "meth_regions_label": pick(args.meth_regions_label, cfg.get("meth_regions_label")),
+        "meth_matrix_dense": (
+            args.meth_matrix_dense
+            if args.meth_matrix_dense is not None
+            else bool(cfg.get("meth_matrix_dense"))
+        ),
         "slurm_partition": pick(args.slurm_partition, stage_slurm_cfg.get("partition")),
         "slurm_mem": pick(args.slurm_mem, stage_slurm_cfg.get("mem")),
         "slurm_cpus_per_task": pick(
@@ -1535,9 +1638,19 @@ def resolve_settings(args: argparse.Namespace) -> dict:
             settings["qc_summary_script"] or "scripts/qc_summary.py"
         )
         settings["mito_chromosomes"] = settings["mito_chromosomes"] or "chrM"
+    if settings.get("run_meth_matrix") and not settings.get("run_meth_analysis"):
+        raise ValueError("run_meth_matrix requires run_meth_analysis to be true")
+
     if (
-        stage in ("allc_to_matrix", "meth_smooth", "meth_scan", "all")
+        stage in (
+            "allc_to_matrix",
+            "meth_smooth",
+            "meth_scan",
+            "meth_matrix",
+            "all",
+        )
         or settings.get("run_meth_analysis")
+        or settings.get("run_meth_matrix")
     ):
         settings["allc_to_matrix_script"] = (
             settings["allc_to_matrix_script"] or "scripts/allc_to_matrix.py"
@@ -1607,6 +1720,15 @@ def resolve_settings(args: argparse.Namespace) -> dict:
             raise ValueError("meth_scan_bridge_gaps must be >= 0")
         if settings["meth_matrix_cores"] < 1:
             raise ValueError("meth_matrix_cores must be >= 1")
+
+    if stage in ("meth_matrix", "all") or settings.get("run_meth_matrix"):
+        settings["meth_matrix_script"] = (
+            settings["meth_matrix_script"] or "scripts/meth_matrix.py"
+        )
+        settings["meth_regions_bed"] = settings.get("meth_regions_bed") or ""
+        settings["meth_regions_label"] = settings.get("meth_regions_label") or ""
+        settings["meth_matrix_dense"] = bool(settings.get("meth_matrix_dense"))
+
     settings["_stage_sequence"] = build_stage_sequence(settings)
     if stage in ("count_mapped_reads", "estimated_cells") and settings["_barcode_mode"] == "gexcb":
         raise ValueError(
@@ -1871,6 +1993,12 @@ def driver_scripts_for_stage(
             script
             for script in scripts
             if script.name.startswith(f"{prefix}_meth_scan")
+        ]
+    if stage_name == "meth_matrix":
+        return [
+            script
+            for script in scripts
+            if script.name.startswith(f"{prefix}_meth_matrix")
         ]
     return scripts
 
@@ -2898,6 +3026,45 @@ def main() -> int:
                 ),
                 slurm_error=settings["slurm_error"].replace(
                     "%x", f"seeksoul_meth_scan_{settings['sample_id']}"
+                ),
+            )
+            generate_slurm_script(command, script_path, log_dir, slurm_args)
+        generated_scripts.append(script_path)
+    elif settings["stage"] == "meth_matrix":
+        command_args = argparse.Namespace(
+            meth_matrix_script=settings["meth_matrix_script"],
+            meth_regions_bed=settings["meth_regions_bed"],
+            meth_regions_label=settings["meth_regions_label"],
+            meth_matrix_dense=settings["meth_matrix_dense"],
+            meth_matrix_cores=settings["meth_matrix_cores"],
+        )
+        command = build_meth_matrix_command(command_args, sample_work)
+        if settings["runner"] == "local":
+            script_path = command_dir / stage_script_name(settings, "meth_matrix")
+        else:
+            script_path = command_dir / stage_script_name(
+                settings, "meth_matrix", suffix="sbatch"
+            )
+        print(f"[make_cmd] runner={settings['runner']}")
+        print(f"[make_cmd] stage={settings['stage']}")
+        print(f"[make_cmd] sample_id={settings['sample_id']}")
+        print(f"[make_cmd] script={script_path}")
+        print(f"[make_cmd] command={command}")
+        if settings["dry_run"]:
+            return 0
+        if settings["runner"] == "local":
+            generate_local_script(command, script_path)
+        else:
+            slurm_args = argparse.Namespace(
+                job_name=f"seeksoul_meth_matrix_{settings['sample_id']}",
+                slurm_partition=settings["slurm_partition"],
+                slurm_mem=settings["slurm_mem"],
+                slurm_cpus_per_task=settings["slurm_cpus_per_task"],
+                slurm_output=settings["slurm_output"].replace(
+                    "%x", f"seeksoul_meth_matrix_{settings['sample_id']}"
+                ),
+                slurm_error=settings["slurm_error"].replace(
+                    "%x", f"seeksoul_meth_matrix_{settings['sample_id']}"
                 ),
             )
             generate_slurm_script(command, script_path, log_dir, slurm_args)

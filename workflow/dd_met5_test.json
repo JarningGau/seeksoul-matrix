@@ -103,9 +103,15 @@
             "partition": "amd-ep2",
             "mem": "16G",
             "cpus_per_task": 8
+        },
+        "meth_matrix": {
+            "partition": "amd-ep2",
+            "mem": "16G",
+            "cpus_per_task": 8
         }
     },
     "run_meth_analysis": false,
+    "run_meth_matrix": false,
     "meth_context": "CG",
     "meth_chunksize": 10000000,
     "meth_round_sites": false,
@@ -117,5 +123,8 @@
     "meth_scan_var_threshold": 0.02,
     "meth_scan_min_cells": 6,
     "meth_scan_bridge_gaps": 0,
-    "meth_matrix_cores": 8
+    "meth_matrix_cores": 8,
+    "meth_regions_bed": "",
+    "meth_regions_label": "",
+    "meth_matrix_dense": false
 }

@@ -52,7 +52,8 @@ MethSCAn algorithms are reimplemented clean-room with citation; no MethSCAn GPL 
 ## Out of scope
 
 - Foreign input formats (Bismark `.cov`, methylpy, biscuit).
-- `meth_smooth`, `meth_scan`, and other downstream meth stages (separate implementation).
+- `meth_matrix_filter` (cell filtering done in `allc_to_matrix`).
+- `meth_diff`, `meth_profile`, and other Phase 3 meth stages.
 
 ## Validation
 
