@@ -1,14 +1,8 @@
-pixi run python scripts/make_cmd.py --workflow-config workflow/dd_met5_test.json --stage all \
---r1 /mnt/e/Spatio_DARLIN_data/SeekSpace/DNAme/fastq/C283_Brain_DNAme_S1_R1.fastq.gz \
---r2 /mnt/e/Spatio_DARLIN_data/SeekSpace/DNAme/fastq/C283_Brain_DNAme_S1_R2.fastq.gz \
---sample-id C283_Brain_DNAme_S1 --submit
-
-
+## HPC test
 pixi run python scripts/make_cmd.py \
   --workflow-config workflow/dd_met5_test.json \
   --stage all \
   --runner slurm \
-  --number-of-split-parts 2 \
   --r1 /storage/liliLab/gaojianing/SeekSpace-DNAme-data/test_R1.fastq.gz \
   --r2 /storage/liliLab/gaojianing/SeekSpace-DNAme-data/test_R2.fastq.gz \
   --sample-id test \
@@ -17,17 +11,22 @@ pixi run python scripts/make_cmd.py \
   --chrom-size-path /storage/liliLab/gaojianing/resource/seeksoul/mouse-reference-GRCm39/bed/chr_nochrM.bed \
   --submit
 
-
+## HPC C283
 pixi run python scripts/make_cmd.py \
   --workflow-config workflow/dd_met5_slurm.json \
   --stage all \
-  --fastp-threads 8 \
-  --number-of-split-parts 8 \
+  --split-fastq-prefix-bases 2 \
   --force-cell-num 10000 \
   --r1 /storage/liliLab/gaojianing/SeekSpace-DNAme-data/C283_Brain_DNAme_R1.fastq.gz \
   --r2 /storage/liliLab/gaojianing/SeekSpace-DNAme-data/C283_Brain_DNAme_R2.fastq.gz \
   --sample-id C283_Brain_DNAme \
   --bismark-ref /storage/liliLab/gaojianing/resource/seeksoul/mouse-reference-GRCm39/fasta/ \
   --genome-fa /storage/liliLab/gaojianing/resource/seeksoul/mouse-reference-GRCm39/fasta/genome.fa \
-  --chrom-size-path /storage/liliLab/gaojianing/resource/seeksoul/mouse-reference-GRCm39/bed/chr_nochrM.bed \
-  --submit
+  --chrom-size-path /storage/liliLab/gaojianing/resource/seeksoul/mouse-reference-GRCm39/bed/chr_nochrM.bed
+
+
+## HPC C283 qc_summary only
+pixi run python scripts/make_cmd.py \
+  --workflow-config workflow/dd_met5_slurm.json \
+  --stage qc_summary \
+  --sample-id C283_Brain_DNAme
