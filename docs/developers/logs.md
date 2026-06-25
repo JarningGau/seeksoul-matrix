@@ -1,5 +1,29 @@
 # Development log
 
+## 2026-06-25 — documentation modularization (contracts layering)
+
+**Task:** Split monolithic `contracts.md` into stable I/O contracts, chunk model, QC metrics, and per-stage implementation notes.
+
+**Files changed:**
+- `docs/developers/doc-system.md` (new)
+- `docs/developers/chunk_model.md` (new)
+- `docs/developers/qc_metrics.md` (new)
+- `docs/developers/stage_notes/*.md` (12 new)
+- `docs/developers/contracts.md` (slimmed)
+- `AGENTS.md`
+- `docs/developers/logs.md`
+
+**Summary:**
+- `contracts.md` now holds stage order, inputs/outputs, and I/O-level contracts only; each stage links to `stage_notes/`, `chunk_model.md`, and/or `qc_metrics.md` as needed.
+- Demux `stats.json` schema, saturation formulas, and summary column definitions moved to `qc_metrics.md`.
+- Chunk/shard/gather/barcode-selection semantics moved to `chunk_model.md`.
+- Defaults, skip logic, toolchain, and SeekSoul alignment notes moved to per-stage files under `stage_notes/`.
+
+**Checks performed:**
+- Manual review of cross-links from `contracts.md` to all new pages; content migration verified against pre-split `contracts.md`.
+
+**Status:** done
+
 ## 2026-06-25 — qc_summary cells metrics and demux rates
 
 **Task:** Refine `qc_summary` cell methylation columns and demux rate metrics in sample summary.

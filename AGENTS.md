@@ -42,7 +42,7 @@ cd dbit-matrix && pixi install        # engineering patterns
 
 Useful references:
 
-- **seeksoul-matrix:** `docs/developers/contracts.md` (stage I/O), `docs/developers/logs.md` (validation log)
+- **seeksoul-matrix:** `docs/developers/doc-system.md` (doc layout and update rules), `docs/developers/contracts.md` (stable stage I/O), `docs/developers/chunk_model.md`, `docs/developers/qc_metrics.md`, `docs/developers/stage_notes/` (implementation details), `docs/developers/logs.md` (validation log)
 - **dbit-matrix:** `docs/developers/architecture.md`, `contracts.md`, `AGENTS.md`
 - **SeekSoulMethyl:** `README.md` (chemistry, installation), `nf/` (Nextflow workflow), `nf/bin/` (stage scripts), `docs/` (BAM dedup, reference genome)
 
@@ -90,7 +90,7 @@ bash work/<sample>/commands/run.sh
 
 ## Pipeline stages
 
-Implemented stages (`scripts/make_cmd.py`; contracts in `docs/developers/contracts.md`):
+Implemented stages (`scripts/make_cmd.py`; stable I/O in `docs/developers/contracts.md`, details in `docs/developers/doc-system.md`):
 
 | Stage | Scripts | Status |
 |-------|---------|--------|
@@ -176,6 +176,6 @@ One commit per logical change. PRs should link issues and describe chemistry or 
 ## Agent-Specific Instructions
 
 - Build new functionality at the **repository root**, adapting engineering patterns from `dbit-matrix/` and domain logic from `SeekSoulMethyl/` — do not extend either template in place.
-- Do not change stage input/output contracts silently; document contracts in `docs/` as they are defined.
+- Do not change stage input/output contracts silently; update the matching layer in `docs/developers/` per `doc-system.md` (contracts, chunk model, QC metrics, or stage notes).
 - Prefer the simplest fix that preserves required behavior.
 - Do not overwrite user changes without explicit permission.
