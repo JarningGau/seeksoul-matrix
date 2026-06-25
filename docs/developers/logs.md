@@ -1,5 +1,33 @@
 # Development log
 
+## 2026-06-25 — qc_summary stage (cells + sample + wgs CSV)
+
+**Task:** Add `qc_summary` gather stage after `saturation`.
+
+**Files changed:**
+- `scripts/qc_summary.py`
+- `scripts/make_cmd.py`
+- `docs/developers/contracts.md`
+- `docs/developers/logs.md`
+- `AGENTS.md`
+- `pixi.toml`
+- `workflow/dd_met5_test.json`
+- `workflow/dd_met5_slurm.json`
+- `workflow/dd_met5_gexcb_test.json`
+
+**Summary:**
+- New stage globs `allcools/*/*_allc.gz.count.csv` (gather-only across prefix shards) into `summary/cells_summary.tsv` with core metrics plus `{context}_mc_rate` columns.
+- Writes `summary/sample_summary.tsv` (user-selected metric subset) and SeekSoul-compatible `summary/wgs_summary.csv` (`NA` for deferred demux keys, max-cell, and bulk CpG columns).
+- Wired as stage 12 (meth-only) / 10 (gexcb) in `make_cmd.py`; `pixi run qc-summary-dry-run`.
+
+**Checks performed:**
+- `pixi run python scripts/qc_summary.py --help`
+- `pixi run qc-summary-dry-run` → `12_qc_summary.sh`
+- `pixi run e2e-dry-run` → driver includes `qc_summary`
+- Real run on `work/dd-met5-example` → 50 cell rows, bismark mapping ~88%, CpG methylation ~77%
+
+**Status:** done
+
 ## 2026-06-24 — saturation plot x-axis in Gbp from fastp
 
 **Task:** Change saturation curve x-axis from coverage fraction to sequencing depth (Gbp) sourced from fastp report.

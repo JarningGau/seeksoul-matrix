@@ -27,8 +27,15 @@ POST_BAM_SORT_METHY_ONLY = [
     "merge_fr_bams",
     "bam_to_allc",
     "saturation",
+    "qc_summary",
 ]
-POST_BAM_SORT_GEXCB = ["split_bams", "merge_fr_bams", "bam_to_allc", "saturation"]
+POST_BAM_SORT_GEXCB = [
+    "split_bams",
+    "merge_fr_bams",
+    "bam_to_allc",
+    "saturation",
+    "qc_summary",
+]
 ALL_STAGE_NAMES = [*BASE_STAGE_SEQUENCE, *POST_BAM_SORT_METHY_ONLY]
 STAGE_CHOICES = [*ALL_STAGE_NAMES, "all"]
 SLURM_NEST_STAGE_KEYS = frozenset(ALL_STAGE_NAMES)
@@ -44,6 +51,7 @@ STAGE_REQUIRED_FIELDS = {
     "merge_fr_bams": [],
     "bam_to_allc": ["genome_fa", "chrom_size_path"],
     "saturation": ["chrom_size_path"],
+    "qc_summary": [],
 }
 DEFAULT_BARCODE_WHITELIST = "whitelist/DD-MET5/U3CB_methylation.txt.gz"
 DEFAULT_EXPECTED_CELL_NUM = 3000
@@ -271,6 +279,10 @@ def parse_args() -> argparse.Namespace:
             "Linear-fit R^2 above which saturation uses linear extrapolation "
             "instead of the saturation curve. Default: 0.99."
         ),
+    )
+    parser.add_argument(
+        "--qc-summary-script",
+        help="Path to qc_summary script. Default: scripts/qc_summary.py.",
     )
     parser.add_argument(
         "--submit",
@@ -583,6 +595,28 @@ def build_saturation_command(args: argparse.Namespace, sample_work: Path) -> str
         "--linear-r2-threshold",
         str(args.saturation_linear_r2_threshold),
     ]
+    return quoted(command)
+
+
+def build_qc_summary_command(
+    args: argparse.Namespace,
+    sample_work: Path,
+    *,
+    sample_id: str,
+    barcode_mode: str,
+) -> str:
+    command = [
+        sys.executable,
+        str(args.qc_summary_script),
+        "--work-path",
+        str(sample_work),
+        "--sample-id",
+        sample_id,
+        "--barcode-mode",
+        "gexcb" if barcode_mode == "gexcb" else "methylation_only",
+    ]
+    if getattr(args, "cbcsv", None):
+        command.extend(["--cbcsv", str(args.cbcsv)])
     return quoted(command)
 
 
@@ -982,6 +1016,39 @@ def validate_inputs_for_stage(
             raise FileNotFoundError(
                 f"no per-cell BAM files found under {merged_root}/*_merged_fr_bam/"
             )
+    elif stage == "qc_summary":
+        script_path = Path(settings["qc_summary_script"])
+        if not script_path.is_file():
+            raise FileNotFoundError(f"qc_summary_script not found: {script_path}")
+        saturation_summary = sample_work / "qc" / "saturation" / "saturation_summary.tsv"
+        if not saturation_summary.is_file():
+            raise FileNotFoundError(
+                f"saturation summary not found: {saturation_summary}"
+            )
+        allcools_dir = sample_work / "allcools"
+        if not allcools_dir.is_dir():
+            raise FileNotFoundError(f"allcools directory not found: {allcools_dir}")
+        count_files = list(allcools_dir.glob("*/*_allc.gz.count.csv"))
+        if not count_files:
+            raise FileNotFoundError(
+                f"no per-cell ALLC count files found under {allcools_dir}"
+            )
+        mode = settings.get("_barcode_mode") or wic.resolve_barcode_mode(settings)
+        if mode == "gexcb":
+            gexcb_reads = list(
+                sample_work.glob(
+                    "split_bams/merged/*_merge_filtered_barcode_reads_counts.csv"
+                )
+            )
+            if not gexcb_reads:
+                raise FileNotFoundError(
+                    "no gexcb merge read-count tables found under "
+                    f"{sample_work}/split_bams/merged/"
+                )
+        else:
+            reads_path = sample_work / "cells" / "filtered_barcode_read_counts.csv"
+            if not reads_path.is_file():
+                raise FileNotFoundError(f"cell reads table not found: {reads_path}")
     else:
         raise ValueError(f"unsupported stage for input validation: {stage}")
 
@@ -1072,6 +1139,8 @@ def resolve_settings(args: argparse.Namespace) -> dict:
             args.saturation_linear_r2_threshold,
             cfg.get("saturation_linear_r2_threshold"),
         ),
+        "qc_summary_script": pick(args.qc_summary_script, cfg.get("qc_summary_script")),
+        "cbcsv": cfg.get("cbcsv"),
         "slurm_partition": pick(args.slurm_partition, stage_slurm_cfg.get("partition")),
         "slurm_mem": pick(args.slurm_mem, stage_slurm_cfg.get("mem")),
         "slurm_cpus_per_task": pick(
@@ -1175,6 +1244,10 @@ def resolve_settings(args: argparse.Namespace) -> dict:
             raise ValueError("saturation_reads_threshold must be > 0")
         if settings["saturation_max_cells"] <= 0:
             raise ValueError("saturation_max_cells must be > 0")
+    if stage in ("qc_summary", "all"):
+        settings["qc_summary_script"] = (
+            settings["qc_summary_script"] or "scripts/qc_summary.py"
+        )
     settings["_stage_sequence"] = build_stage_sequence(settings)
     if stage in ("count_mapped_reads", "estimated_cells") and settings["_barcode_mode"] == "gexcb":
         raise ValueError(
@@ -1415,6 +1488,12 @@ def driver_scripts_for_stage(
             script
             for script in scripts
             if script.name.startswith(f"{prefix}_saturation")
+        ]
+    if stage_name == "qc_summary":
+        return [
+            script
+            for script in scripts
+            if script.name.startswith(f"{prefix}_qc_summary")
         ]
     return scripts
 
@@ -2278,6 +2357,47 @@ def main() -> int:
                 ),
                 slurm_error=settings["slurm_error"].replace(
                     "%x", f"seeksoul_saturation_{settings['sample_id']}"
+                ),
+            )
+            generate_slurm_script(command, script_path, log_dir, slurm_args)
+        generated_scripts.append(script_path)
+    elif settings["stage"] == "qc_summary":
+        command_args = argparse.Namespace(
+            qc_summary_script=settings["qc_summary_script"],
+            cbcsv=settings.get("cbcsv"),
+        )
+        command = build_qc_summary_command(
+            command_args,
+            sample_work,
+            sample_id=settings["sample_id"],
+            barcode_mode=settings["_barcode_mode"],
+        )
+        if settings["runner"] == "local":
+            script_path = command_dir / stage_script_name(settings, "qc_summary")
+        else:
+            script_path = command_dir / stage_script_name(
+                settings, "qc_summary", suffix="sbatch"
+            )
+        print(f"[make_cmd] runner={settings['runner']}")
+        print(f"[make_cmd] stage={settings['stage']}")
+        print(f"[make_cmd] sample_id={settings['sample_id']}")
+        print(f"[make_cmd] script={script_path}")
+        print(f"[make_cmd] command={command}")
+        if settings["dry_run"]:
+            return 0
+        if settings["runner"] == "local":
+            generate_local_script(command, script_path)
+        else:
+            slurm_args = argparse.Namespace(
+                job_name=f"seeksoul_qc_summary_{settings['sample_id']}",
+                slurm_partition=settings["slurm_partition"],
+                slurm_mem=settings["slurm_mem"],
+                slurm_cpus_per_task=settings["slurm_cpus_per_task"],
+                slurm_output=settings["slurm_output"].replace(
+                    "%x", f"seeksoul_qc_summary_{settings['sample_id']}"
+                ),
+                slurm_error=settings["slurm_error"].replace(
+                    "%x", f"seeksoul_qc_summary_{settings['sample_id']}"
                 ),
             )
             generate_slurm_script(command, script_path, log_dir, slurm_args)

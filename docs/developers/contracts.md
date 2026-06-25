@@ -4,18 +4,20 @@ Normative input/output contracts for seeksoul-matrix workflow stages.
 
 ## Main stage order (planned)
 
-`fastp_split -> demux_extract_bc -> regroup_shards -> bismark_align -> bam_sort -> (count_mapped_reads -> estimated_cells)? -> split_bams -> merge_fr_bams -> bam_to_allc -> saturation`
+`fastp_split -> demux_extract_bc -> regroup_shards -> bismark_align -> bam_sort -> (count_mapped_reads -> estimated_cells)? -> split_bams -> merge_fr_bams -> bam_to_allc -> saturation -> qc_summary`
 
-`fastp_split`, `demux_extract_bc`, `regroup_shards`, `bismark_align`, `bam_sort`, `count_mapped_reads`, `estimated_cells`, `split_bams`, `merge_fr_bams`, `bam_to_allc`, and `saturation` are implemented in this repository revision.
+`fastp_split`, `demux_extract_bc`, `regroup_shards`, `bismark_align`, `bam_sort`, `count_mapped_reads`, `estimated_cells`, `split_bams`, `merge_fr_bams`, `bam_to_allc`, `saturation`, and `qc_summary` are implemented in this repository revision.
 
 ### Chunk model (barcode-prefix shards)
 
 | Concept | Key / ID | Role |
 |---------|----------|------|
 | Read-order chunk | numeric `0001..N` from `number_of_split_parts` | fastp split + parallel demux input only |
-| Analysis chunk | barcode prefix from `split_fastq_prefix_bases` (default `1`) | all stages from `regroup_shards` through `saturation` |
+| Analysis chunk | barcode prefix from `split_fastq_prefix_bases` (default `1`) | all stages from `regroup_shards` through `qc_summary` |
 
 With DD-MET5 barcodes (no `C`), `split_fastq_prefix_bases=1` yields up to 3 analysis chunks (`A`, `G`, `T`). Each cell barcode maps to exactly one prefix; regrouped shards are disjoint by barcode.
+
+Stages that consume all analysis chunks (e.g. `saturation`, `qc_summary`) **gather** per-chunk outputs by globbing chunk directories. They do **not** deduplicate barcodes across chunks — a barcode never appears in more than one prefix shard.
 
 Manifest: `work/<sample>/demux/chunks.tsv` (`chunk_id`, `prefix`, `stream`, `subshard_count`, `subshard_paths`).
 
@@ -292,7 +294,7 @@ Contract:
 - Single strand only: copy input BAM to output path.
 - Default `merge_fr_bams_cores=8`; one samtools thread per barcode merge, parallelized by process pool.
 - Skip output BAM when existing file passes `samtools quickcheck`.
-- Cross-chunk barcode consolidation, allcools, and UMI dedup are out of scope for this stage.
+- Sample-wide union of filtered barcodes or merged BAMs across analysis chunks (barcodes are disjoint by prefix; see Chunk model), allcools conversion, and UMI dedup are out of scope for this stage.
 
 ### `bam_to_allc`
 
@@ -320,7 +322,7 @@ Contract:
 - Skip barcode when `<barcode>_allc.gz` exists and is non-empty.
 - `OPENBLAS_NUM_THREADS=1`, `OMP_NUM_THREADS=1` during parallel workers.
 - Requires seekgene ALLCools fork (`pixi run setup-allcools`) and `tabix` on PATH (`htslib` conda dep; `check-allcools-env` verifies). `bam_to_allc.py` prepends the pixi `bin` directory to subprocess `PATH` so ALLCools can invoke `tabix` on Slurm compute nodes without pixi activation (same pattern as `bismark_align` / bowtie2).
-- `generate-dataset`, merge/extract allc, and cross-chunk metric consolidation are out of scope for this stage.
+- `generate-dataset`, merge/extract allc, and sample-wide per-cell QC tables that glob `*_allc.gz.count.csv` from all analysis-chunk directories (gather-only; no barcode dedup across chunks) are out of scope for this stage.
 
 ### `saturation`
 
@@ -363,3 +365,46 @@ Contract:
 - Y-axis semantics: median **genome fraction** (0–1 in TSV; plot as %).
 - Single sample-level job (no chunking); supports `--dry-run`.
 - Does not depend on `merge_sc_metrics` or ALLCools count sidecars.
+
+### `qc_summary`
+
+Purpose: gather per-cell and sample-level QC metrics into summary tables (SeekSoulMethyl `step3_merge_sc_metrics` + `step4_wgs_summary` alignment).
+
+Inputs:
+
+- `work/<sample>/shard_fastq/fastp.json`
+- `work/<sample>/demux/*.stats.json`, `work/<sample>/demux/qc.CtoT.tsv`
+- `work/<sample>/align/*_{forward,reverse}_1_bismark_bt2_PE_report.txt`
+- `work/<sample>/qc/saturation/saturation_summary.tsv`
+- `work/<sample>/allcools/*_merged_fr_bam_allcools/*_allc.gz.count.csv`
+- Cell read-count table:
+  - methylation-only: `work/<sample>/cells/filtered_barcode_read_counts.csv`
+  - gexcb: `work/<sample>/split_bams/merged/*_merge_filtered_barcode_reads_counts.csv` (summed across chunks)
+- Optional workflow key `cbcsv`: path to `m_cb,gex_cb` map for `gex_cb` column (not the `gexcb` barcode list)
+
+Outputs under `work/<sample>/summary/`:
+
+| File | Description |
+|------|-------------|
+| `cells_summary.tsv` | One row per cell with ALLCools metrics, aligned reads, per-barcode `CtoT`, and `{context}_mc_rate` columns |
+| `sample_summary.tsv` | One-row internal QC summary (selected metric subset) |
+| `wgs_summary.csv` | SeekSoul-compatible one-row CSV; max-cell and bulk-CpG columns are `NA` |
+
+`sample_summary.tsv` columns (selected subset):
+
+- fastp: `raw_reads`, `total_bases`, `duplication_rate`
+- demux: `valid_barcode_rate`, `barcode_corrected_fraction`, `dropped_too_short`, `dropped_chimeric`, `forward_reads`, `reverse_reads`, `rate_17lme`, `CtoT`, plus `rate_7f`, `rate_7f17lme`, `cc_mean` as `NA` until demux stats extended
+- bismark: `mapped_to_genome`, `confidently_mapped`, `cpg_methylation_rate`, `chg_methylation_rate`, `chh_methylation_rate` (no `unknown_methylation_rate`)
+- cells: `estimated_cells`, `reads_in_cells`, `fraction_reads_in_cells`
+- saturation: `observed_median_genome_fraction`, `theoretical_max_median_genome_fraction`, `saturation_rate`, `extrapolation_model`, `sampled_cell_count`, `sample_seed` (no `hq_cell_count`, no `predicted_median_genome_fraction_at_2x`)
+- median called-cell QC: `median_genome_cov`, `median_total_cpg_number`, `median_aligned_reads`, `median_cell_saturation`
+
+`cells_summary.tsv` core columns: `cell_barcode`, `aligned_reads`, `CtoT`, `total_cpg_number`, `genome_cov`, `genome_cov_raw_umi`, `genome_cov_new_umi`, `cell_saturation`, `weighted_mc_rate`, optional `gex_cb`; plus `{context}_mc_rate` per ALLCools context. Omits `total_mc`, `total_cov`, `total_number`, and `{context}_mc/cov/number`.
+
+Contract:
+
+- Glob `allcools/*_merged_fr_bam_allcools/*_allc.gz.count.csv` across analysis chunks; gather-only (barcodes are disjoint by prefix; see Chunk model).
+- Median-cell stats: among called cells with ALLCools metrics, sort by `genome_cov` descending and take the median index.
+- `fraction_reads_in_cells` = `reads_in_cells` / pooled Bismark unique aligned reads.
+- Single sample-level job; supports `--dry-run`.
+- Does not produce per-cell JSON, HTML reports, or bulk merged ALLC metrics.

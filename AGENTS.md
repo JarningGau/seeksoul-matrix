@@ -60,6 +60,7 @@ pixi run split-bams-dry-run        # split_bams script generation
 pixi run merge-fr-bams-dry-run     # merge_fr_bams script generation
 pixi run bam-to-allc-dry-run       # bam_to_allc script generation
 pixi run saturation-dry-run        # saturation script generation
+pixi run qc-summary-dry-run        # qc_summary script generation
 pixi run e2e-dry-run           # --stage all (local run.sh) dry-run
 pixi run e2e-slurm-dry-run     # --stage all (Slurm run.sbatch) dry-run
 ```
@@ -104,10 +105,11 @@ Implemented stages (`scripts/make_cmd.py`; contracts in `docs/developers/contrac
 | `merge_fr_bams` | `scripts/merge_fr_bams.py` | **validated** |
 | `bam_to_allc` | `scripts/bam_to_allc.py` | **validated** |
 | `saturation` | `scripts/saturation.py` | **validated** |
+| `qc_summary` | `scripts/qc_summary.py` | **validated** |
 
-`--stage all` generates per-stage scripts under `work/<sample>/commands/` plus a driver: `run.sh` (local) or `run.sbatch` (Slurm DAG). Analysis chunks are keyed by barcode prefix (`split_fastq_prefix_bases`, default `1`); `number_of_split_parts` controls read-order demux parallelism only. Barcode selection is **mutually exclusive**: `expected_cell_num` (default 3000, methylation-only path: count → estimate → split → merge → allc → saturation) or `gexcb` (RNA barcodes, split → merge → allc → saturation). Slurm emits per-chunk sbatch files for parallel stages and aggregate jobs for `estimated_cells` / `aggregate_ct_qc`.
+`--stage all` generates per-stage scripts under `work/<sample>/commands/` plus a driver: `run.sh` (local) or `run.sbatch` (Slurm DAG). Analysis chunks are keyed by barcode prefix (`split_fastq_prefix_bases`, default `1`); `number_of_split_parts` controls read-order demux parallelism only. Barcode selection is **mutually exclusive**: `expected_cell_num` (default 3000, methylation-only path: count → estimate → split → merge → allc → saturation → qc_summary) or `gexcb` (RNA barcodes, split → merge → allc → saturation → qc_summary). Slurm emits per-chunk sbatch files for parallel stages and aggregate jobs for `estimated_cells` / `aggregate_ct_qc`.
 
-Eleven-stage driver (`fastp_split` → `saturation`) with barcode-prefix analysis chunks. Methylation-only path validated locally (`run.sh`) and on HPC (`run.sbatch`; see `docs/developers/logs.md`).
+Twelve-stage driver (`fastp_split` → `qc_summary`) with barcode-prefix analysis chunks. Methylation-only path validated locally (`run.sh`) and on HPC (`run.sbatch`; see `docs/developers/logs.md`).
 
 ## Coding Style & Naming Conventions
 
@@ -121,7 +123,7 @@ Follow **dbit-matrix** engineering patterns when implementing seeksoul-matrix; c
 
 ## Testing Guidelines
 
-No automated test suite yet. `fastp_split`, `demux_extract_bc`, `regroup_shards`, `bismark_align`, `bam_sort`, `count_mapped_reads`, `estimated_cells`, `split_bams`, `merge_fr_bams`, `bam_to_allc`, `saturation`, and the eleven-stage workflow driver (`--stage all` / `run.sh` or Slurm `run.sbatch`, methylation-only path) have been manually validated locally and on HPC (see `docs/developers/logs.md`). When adding tests, follow the template's regression style in `dbit-matrix/docs/maintenance/`. Before finishing workflow changes, run relevant CLI `--help`, `--version`, and `--dry-run` (or `pixi run fastp-dry-run` / `pixi run demux-dry-run` / `pixi run regroup-dry-run` / `pixi run bismark-align-dry-run` / `pixi run bam-sort-dry-run` / `pixi run count-mapped-reads-dry-run` / `pixi run estimated-cells-dry-run` / `pixi run split-bams-dry-run` / `pixi run merge-fr-bams-dry-run` / `pixi run bam-to-allc-dry-run` / `pixi run saturation-dry-run` / `pixi run e2e-dry-run` / `pixi run e2e-slurm-dry-run` for the workflow driver).
+No automated test suite yet. `fastp_split`, `demux_extract_bc`, `regroup_shards`, `bismark_align`, `bam_sort`, `count_mapped_reads`, `estimated_cells`, `split_bams`, `merge_fr_bams`, `bam_to_allc`, `saturation`, `qc_summary`, and the twelve-stage workflow driver (`--stage all` / `run.sh` or Slurm `run.sbatch`, methylation-only path) have been manually validated locally and on HPC (see `docs/developers/logs.md`). When adding tests, follow the template's regression style in `dbit-matrix/docs/maintenance/`. Before finishing workflow changes, run relevant CLI `--help`, `--version`, and `--dry-run` (or `pixi run fastp-dry-run` / `pixi run demux-dry-run` / `pixi run regroup-dry-run` / `pixi run bismark-align-dry-run` / `pixi run bam-sort-dry-run` / `pixi run count-mapped-reads-dry-run` / `pixi run estimated-cells-dry-run` / `pixi run split-bams-dry-run` / `pixi run merge-fr-bams-dry-run` / `pixi run bam-to-allc-dry-run` / `pixi run saturation-dry-run` / `pixi run qc-summary-dry-run` / `pixi run e2e-dry-run` / `pixi run e2e-slurm-dry-run` for the workflow driver).
 
 ## Lightweight Development Loop
 

@@ -17,6 +17,7 @@ split-bams-dry-run = "python scripts/make_cmd.py --workflow-config workflow/dd_m
 merge-fr-bams-dry-run = "python scripts/make_cmd.py --workflow-config workflow/dd_met5_test.json --stage merge_fr_bams --skip-workdir-input-checks --dry-run"
 bam-to-allc-dry-run = "python scripts/make_cmd.py --workflow-config workflow/dd_met5_test.json --stage bam_to_allc --skip-workdir-input-checks --dry-run"
 saturation-dry-run = "python scripts/make_cmd.py --workflow-config workflow/dd_met5_test.json --stage saturation --skip-workdir-input-checks --dry-run"
+qc-summary-dry-run = "python scripts/make_cmd.py --workflow-config workflow/dd_met5_test.json --stage qc_summary --skip-workdir-input-checks --dry-run"
 e2e-dry-run = "python scripts/make_cmd.py --workflow-config workflow/dd_met5_test.json --stage all --dry-run"
 e2e-slurm-dry-run = "python scripts/make_cmd.py --workflow-config workflow/dd_met5_test.json --stage all --runner slurm --dry-run"
 setup-bismark = "bash scripts/install_seekgene_bismark.sh"

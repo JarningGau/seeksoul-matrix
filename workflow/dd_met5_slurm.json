@@ -82,6 +82,11 @@
             "partition": "amd-ep2",
             "mem": "12G",
             "cpus_per_task": 1
+        },
+        "qc_summary": {
+            "partition": "amd-ep2",
+            "mem": "2G",
+            "cpus_per_task": 1
         }
     }
 }
