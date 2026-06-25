@@ -2,6 +2,33 @@
 
 For current reliability, see [`status.md`](status.md). This file is the append-only history.
 
+## 2026-06-25 — qc_summary mitochondrial CG methylation rate
+
+**Task:** Add sample-level and cell-level `mito_CG_mc_rate` to `qc_summary` output tables.
+
+**Files changed:**
+- `scripts/qc_summary.py`
+- `scripts/make_cmd.py`
+- `docs/developers/qc_metrics.md`
+- `docs/developers/contracts.md`
+- `docs/developers/stage_notes/qc_summary.md`
+- `docs/developers/logs.md`
+- `docs/developers/status.md`
+
+**Summary:**
+- Parse sibling `*_allc.gz` per cell; filter `chrom ∈ mito_chromosomes` (default `chrM`) and CG contexts; write `mito_CG_mc_rate` to `cells_summary.tsv` (`NA` when no mito CG coverage).
+- Sample `sample_summary.tsv` pools mc/cov across **called cells** only.
+- `make_cmd.py` / workflow JSON key `mito_chromosomes` (default `chrM`).
+
+**Checks performed:**
+- `pixi run python scripts/qc_summary.py --help`
+- `pixi run qc-summary-dry-run` → `--mito-chromosomes chrM` in generated command
+- `pixi run python scripts/qc_summary.py --work-path work/dd-met5-example --sample-id dd-met5-example` → 50 cell rows; 4 cells with mito CG rate `0.000000`, others `NA`; sample `mito_CG_mc_rate=0.000000`
+
+**Status:** done
+
+**Notes:** `wgs_summary.csv` unchanged (no SeekSoul-compatible column). Biological interpretation of near-zero mito CG rates not reviewed.
+
 ## 2026-06-25 — docs consistency audit fixes (items 1,2,3,5,6,7,8)
 
 **Task:** Close audit mismatches: ALLC count filename, README navigation, workflow JSON inventory, `force_cell_num` / `cbcsv` docs, `examples/` in AGENTS tree, narrow testing guidance, `--cbcsv` on `make_cmd.py`.

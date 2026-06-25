@@ -97,7 +97,7 @@ Workflow parameters (defaults in parentheses):
 
 One row per cell. Core columns:
 
-`cell_barcode`, `aligned_reads`, `CtoT`, `total_cpg_number`, `genome_cov`, `genome_cov_raw_umi`, `genome_cov_new_umi`, `cell_saturation`, `CG_mc_rate`, `CH_mc_rate`, `CHG_mc_rate`, `CHH_mc_rate`, `CA_mc_rate`, `CT_mc_rate`, `CC_mc_rate`, optional `gex_cb`.
+`cell_barcode`, `aligned_reads`, `CtoT`, `total_cpg_number`, `genome_cov`, `genome_cov_raw_umi`, `genome_cov_new_umi`, `cell_saturation`, `CG_mc_rate`, `mito_CG_mc_rate`, `CH_mc_rate`, `CHG_mc_rate`, `CHH_mc_rate`, `CA_mc_rate`, `CT_mc_rate`, `CC_mc_rate`, optional `gex_cb`.
 
 Aggregated `*_mc_rate` values pool `mc` and `cov` across trinucleotide contexts:
 
@@ -105,6 +105,8 @@ Aggregated `*_mc_rate` values pool `mc` and `cov` across trinucleotide contexts:
 - **CH:** non-CG
 - **CHG / CHH:** third-base split within CH
 - **CA / CT / CC:** second-base split within CH
+
+**`mito_CG_mc_rate`:** per-cell mitochondrial CG methylation from the sibling `*_allc.gz` (not `count.csv`). Filter `chrom ∈ mito_chromosomes` (default `chrM`) and CG contexts (`CGA`, `CGC`, `CGG`, `CGT`); `sum(mc) / sum(cov)`. `NA` when the cell has no mitochondrial CG coverage.
 
 Omits per-context `{context}_mc_rate`, `weighted_mc_rate`, `total_mc`, `total_cov`, `total_number`, and `{context}_mc/cov/number`.
 
@@ -115,6 +117,7 @@ One-row internal QC summary (selected metric subset):
 - **fastp:** `raw_reads`, `total_bases`, `duplication_rate`
 - **demux:** `valid_barcode_rate` (`barcode_passed.total` / `funnel.total`), `valid_demux_rate` (`barcode_passed.valid.total` / `funnel.total`), `barcode_corrected_fraction`, `dropped_too_short`, `dropped_chimeric`, `forward_reads`, `reverse_reads`, `rate_17lme`, `CtoT`, plus `rate_7f`, `rate_7f17lme`, `cc_mean` as `NA` until demux stats extended
 - **bismark:** `mapped_to_genome`, `confidently_mapped`, `cpg_methylation_rate`, `chg_methylation_rate`, `chh_methylation_rate` (no `unknown_methylation_rate`)
+- **mito:** `mito_CG_mc_rate` — pooled `sum(mc) / sum(cov)` across mitochondrial CG sites in **called cells** only (same contig/context filter as per-cell column); `NA` when no coverage
 - **cells:** `estimated_cells`, `reads_in_cells`, `fraction_reads_in_cells`
 - **saturation:** `observed_median_genome_fraction`, `theoretical_max_median_genome_fraction`, `saturation_rate`, `extrapolation_model`, `sampled_cell_count`, `sample_seed` (no `hq_cell_count`, no `predicted_median_genome_fraction_at_2x`)
 - **median called-cell QC:** `median_genome_cov`, `median_total_cpg_number`, `median_aligned_reads`, `median_cell_saturation`

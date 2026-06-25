@@ -292,6 +292,13 @@ def parse_args() -> argparse.Namespace:
         ),
     )
     parser.add_argument(
+        "--mito-chromosomes",
+        help=(
+            "Comma-separated mitochondrial contigs for qc_summary mito_CG_mc_rate. "
+            "Default: chrM. Overrides workflow JSON mito_chromosomes when set."
+        ),
+    )
+    parser.add_argument(
         "--submit",
         action="store_true",
         help="Submit immediately after generating command file.",
@@ -624,6 +631,8 @@ def build_qc_summary_command(
     ]
     if getattr(args, "cbcsv", None):
         command.extend(["--cbcsv", str(args.cbcsv)])
+    mito_chromosomes = getattr(args, "mito_chromosomes", None) or "chrM"
+    command.extend(["--mito-chromosomes", str(mito_chromosomes)])
     return quoted(command)
 
 
@@ -1148,6 +1157,7 @@ def resolve_settings(args: argparse.Namespace) -> dict:
         ),
         "qc_summary_script": pick(args.qc_summary_script, cfg.get("qc_summary_script")),
         "cbcsv": pick(args.cbcsv, cfg.get("cbcsv")),
+        "mito_chromosomes": pick(args.mito_chromosomes, cfg.get("mito_chromosomes")),
         "slurm_partition": pick(args.slurm_partition, stage_slurm_cfg.get("partition")),
         "slurm_mem": pick(args.slurm_mem, stage_slurm_cfg.get("mem")),
         "slurm_cpus_per_task": pick(
@@ -1255,6 +1265,7 @@ def resolve_settings(args: argparse.Namespace) -> dict:
         settings["qc_summary_script"] = (
             settings["qc_summary_script"] or "scripts/qc_summary.py"
         )
+        settings["mito_chromosomes"] = settings["mito_chromosomes"] or "chrM"
     settings["_stage_sequence"] = build_stage_sequence(settings)
     if stage in ("count_mapped_reads", "estimated_cells") and settings["_barcode_mode"] == "gexcb":
         raise ValueError(
@@ -2372,6 +2383,7 @@ def main() -> int:
         command_args = argparse.Namespace(
             qc_summary_script=settings["qc_summary_script"],
             cbcsv=settings.get("cbcsv"),
+            mito_chromosomes=settings.get("mito_chromosomes"),
         )
         command = build_qc_summary_command(
             command_args,

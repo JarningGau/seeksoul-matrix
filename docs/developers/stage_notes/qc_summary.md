@@ -5,6 +5,7 @@ Implementation notes for [`qc_summary`](../contracts.md#qc_summary). Not normati
 ## Behavior
 
 - Glob `allcools/*_merged_fr_bam_allcools/*_allc.gz.count.csv` across analysis chunks; gather-only (barcodes are disjoint by prefix; see [`chunk_model.md`](../chunk_model.md)).
+- **`mito_CG_mc_rate`:** parse sibling `*_allc.gz` per cell; keep rows with `chrom ∈ mito_chromosomes` and CG context (`context[1] == G`). Sample row pools mc/cov across called cells only.
 - Median-cell stats: among called cells with ALLCools metrics, sort by `genome_cov` descending and take the median index.
 - `fraction_reads_in_cells` = `reads_in_cells` / pooled Bismark unique aligned reads.
 - Optional workflow key `cbcsv`: path to `m_cb,gex_cb` map for `gex_cb` column (not the `gexcb` barcode list).
@@ -13,9 +14,10 @@ Column definitions for output tables: [`qc_metrics.md`](../qc_metrics.md#qc_summ
 
 ## Defaults and workflow keys
 
-| Key | Role |
-|-----|------|
-| `cbcsv` | optional methylation ↔ GEX barcode map for `gex_cb` column |
+| Key | Default | Role |
+|-----|---------|------|
+| `cbcsv` | — | optional methylation ↔ GEX barcode map for `gex_cb` column |
+| `mito_chromosomes` | `chrM` | comma-separated mitochondrial contigs for `mito_CG_mc_rate` |
 
 Cell read-count input path depends on barcode-selection mode — see [`chunk_model.md`](../chunk_model.md#barcode-selection).
 

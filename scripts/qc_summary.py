@@ -5,6 +5,7 @@ from __future__ import annotations
 
 import argparse
 import csv
+import gzip
 import json
 import re
 import sys
@@ -34,7 +35,9 @@ CORE_CELL_COLUMNS = (
     "genome_cov_raw_umi",
     "genome_cov_new_umi",
     "cell_saturation",
-    *AGGREGATED_MC_RATE_COLUMNS,
+    "CG_mc_rate",
+    "mito_CG_mc_rate",
+    *AGGREGATED_MC_RATE_COLUMNS[1:],
 )
 
 SAMPLE_SUMMARY_COLUMNS = (
@@ -59,6 +62,7 @@ SAMPLE_SUMMARY_COLUMNS = (
     "cpg_methylation_rate",
     "chg_methylation_rate",
     "chh_methylation_rate",
+    "mito_CG_mc_rate",
     "estimated_cells",
     "reads_in_cells",
     "fraction_reads_in_cells",
@@ -139,6 +143,14 @@ def parse_args() -> argparse.Namespace:
         "--cbcsv",
         default=None,
         help="Optional gexcb map CSV with columns m_cb,gex_cb.",
+    )
+    parser.add_argument(
+        "--mito-chromosomes",
+        default="chrM",
+        help=(
+            "Comma-separated mitochondrial contig names for mito_CG_mc_rate. "
+            "Default: chrM."
+        ),
     )
     parser.add_argument(
         "--dry-run",
@@ -455,6 +467,47 @@ def load_gex_cb_map(cbcsv: str | None) -> dict[str, str] | None:
     return mapping
 
 
+def parse_mito_chromosomes(value: str) -> frozenset[str]:
+    chromosomes = frozenset(part.strip() for part in value.split(",") if part.strip())
+    if not chromosomes:
+        raise ValueError("--mito-chromosomes resolved to an empty list")
+    return chromosomes
+
+
+def allc_path_from_count_path(count_path: Path) -> Path:
+    name = count_path.name
+    if name.endswith(".count.csv"):
+        return count_path.with_name(name[: -len(".count.csv")])
+    return count_path.with_suffix("")
+
+
+def read_mito_cg_totals_from_allc(
+    allc_path: Path,
+    mito_chromosomes: frozenset[str],
+) -> tuple[float, float]:
+    if not allc_path.is_file():
+        return 0.0, 0.0
+    mc_total = 0.0
+    cov_total = 0.0
+    with gzip.open(allc_path, "rt", encoding="utf-8") as handle:
+        for raw_line in handle:
+            line = raw_line.strip()
+            if not line or line.startswith("#"):
+                continue
+            fields = line.split("\t")
+            if len(fields) < 7:
+                continue
+            chrom = fields[0]
+            if chrom not in mito_chromosomes:
+                continue
+            context = fields[3]
+            if len(context) < 2 or context[1] != "G":
+                continue
+            mc_total += float(fields[4])
+            cov_total += float(fields[5])
+    return mc_total, cov_total
+
+
 def extract_cell_barcode(count_path: Path) -> str:
     name = count_path.name
     if name.endswith("_allc.gz.count.csv"):
@@ -543,9 +596,12 @@ def build_cells_summary(
     reads_map: dict[str, int],
     ctot_map: dict[str, str],
     gex_cb_map: dict[str, str] | None,
-) -> list[dict[str, str]]:
+    mito_chromosomes: frozenset[str],
+) -> tuple[list[dict[str, str]], float, float]:
     count_paths = sorted(allcools_dir.glob("*/*_allc.gz.count.csv"))
     cell_rows: list[dict[str, str]] = []
+    sample_mito_mc = 0.0
+    sample_mito_cov = 0.0
 
     for count_path in count_paths:
         barcode = extract_cell_barcode(count_path)
@@ -571,6 +627,13 @@ def build_cells_summary(
                 cell_saturation = row.get("cell_saturation") or ""
 
         aggregated_rates = compute_aggregated_mc_rates(context_rows)
+        mito_mc, mito_cov = read_mito_cg_totals_from_allc(
+            allc_path_from_count_path(count_path),
+            mito_chromosomes,
+        )
+        if barcode in reads_map:
+            sample_mito_mc += mito_mc
+            sample_mito_cov += mito_cov
         row_out: dict[str, str] = {
             "cell_barcode": barcode,
             "aligned_reads": str(reads_map.get(barcode, "")),
@@ -584,12 +647,15 @@ def build_cells_summary(
                 column: format_rate(aggregated_rates[column])
                 for column in AGGREGATED_MC_RATE_COLUMNS
             },
+            "mito_CG_mc_rate": (
+                format_rate(mito_mc / mito_cov) if mito_cov > 0 else NA
+            ),
         }
         if gex_cb_map is not None:
             row_out["gex_cb"] = gex_cb_map.get(barcode, "")
         cell_rows.append(row_out)
 
-    return cell_rows
+    return cell_rows, sample_mito_mc, sample_mito_cov
 
 
 def median_cell_stats(
@@ -664,6 +730,8 @@ def build_sample_summary_row(
     reads_map: dict[str, int],
     saturation: dict[str, str],
     median_stats: dict[str, str],
+    sample_mito_mc: float,
+    sample_mito_cov: float,
 ) -> dict[str, str]:
     reads_in_cells = sum(reads_map.values())
     uniquereads = int(bismark.get("uniquereads") or 0)
@@ -677,6 +745,11 @@ def build_sample_summary_row(
         "cpg_methylation_rate": str(bismark.get("cpg_methylation_rate", NA)),
         "chg_methylation_rate": str(bismark.get("chg_methylation_rate", NA)),
         "chh_methylation_rate": str(bismark.get("chh_methylation_rate", NA)),
+        "mito_CG_mc_rate": (
+            format_rate(sample_mito_mc / sample_mito_cov)
+            if sample_mito_cov > 0
+            else NA
+        ),
         "estimated_cells": str(len(reads_map)),
         "reads_in_cells": str(reads_in_cells),
         "fraction_reads_in_cells": format_rate(fraction),
@@ -767,6 +840,7 @@ def main() -> int:
     print(f"[qc_summary] work_path={work_path}")
     print(f"[qc_summary] sample_id={args.sample_id}")
     print(f"[qc_summary] barcode_mode={args.barcode_mode}")
+    print(f"[qc_summary] mito_chromosomes={args.mito_chromosomes}")
     print(f"[qc_summary] fastp_json={fastp_json}")
     print(f"[qc_summary] demux_dir={demux_dir}")
     print(f"[qc_summary] align_dir={align_dir}")
@@ -801,11 +875,13 @@ def main() -> int:
     ctot_map = load_ctot_map(ctot_path)
     gex_cb_map = load_gex_cb_map(args.cbcsv)
 
-    cell_rows = build_cells_summary(
+    mito_chromosomes = parse_mito_chromosomes(args.mito_chromosomes)
+    cell_rows, sample_mito_mc, sample_mito_cov = build_cells_summary(
         allcools_dir,
         reads_map,
         ctot_map,
         gex_cb_map,
+        mito_chromosomes,
     )
     median_stats = median_cell_stats(cell_rows, reads_map)
     saturation = load_saturation_summary(saturation_summary, args.sample_id)
@@ -817,6 +893,8 @@ def main() -> int:
         reads_map,
         saturation,
         median_stats,
+        sample_mito_mc,
+        sample_mito_cov,
     )
 
     cell_columns = list(CORE_CELL_COLUMNS)

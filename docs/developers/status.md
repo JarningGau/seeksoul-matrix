@@ -44,4 +44,4 @@ Contract-sensitive surfaces — update the canonical doc layer per [`doc-system.
 | Barcode correction (HD=1, no multi-rescue) | [`stage_notes/demux_extract_bc.md`](stage_notes/demux_extract_bc.md) |
 | `chunk_id` / analysis-chunk semantics | [`chunk_model.md`](chunk_model.md) |
 | BAM read-name format (`CB`/`UR` from demux names) | [`stage_notes/bismark_align.md`](stage_notes/bismark_align.md), [`contracts.md`](contracts.md#split_bams) |
-| `cells_summary.tsv` columns and `*_mc_rate` pooling | [`qc_metrics.md`](qc_metrics.md#cells_summarytsv) |
+| `cells_summary.tsv` columns, `*_mc_rate` pooling, `mito_CG_mc_rate` | [`qc_metrics.md`](qc_metrics.md#cells_summarytsv) |

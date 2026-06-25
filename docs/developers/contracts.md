@@ -295,8 +295,10 @@ Inputs:
 - `work/<sample>/align/*_{forward,reverse}_1_bismark_bt2_PE_report.txt`
 - `work/<sample>/qc/saturation/saturation_summary.tsv`
 - `work/<sample>/allcools/*_merged_fr_bam_allcools/*_allc.gz.count.csv`
+- `work/<sample>/allcools/*_merged_fr_bam_allcools/*_allc.gz` (sibling of each count sidecar; used for `mito_CG_mc_rate`)
 - cell read-count table (methylation-only or gexcb; see [chunk model](chunk_model.md#barcode-selection))
 - optional `cbcsv` (workflow JSON or `make_cmd.py --cbcsv`): methylation ↔ GEX barcode map for `gex_cb` column in `cells_summary.tsv`
+- optional `mito_chromosomes` (workflow JSON or `make_cmd.py --mito-chromosomes`; default `chrM`): mitochondrial contig names for `mito_CG_mc_rate`
 
 Outputs under `work/<sample>/summary/`:
 
