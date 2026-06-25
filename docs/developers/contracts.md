@@ -354,3 +354,67 @@ Contract:
 - MethSCAn `prepare` parity validated on `work/dd-met5-example` (50 cells, all-context comparison passed).
 
 See also: [stage notes](stage_notes/allc_to_matrix.md) · [chunk model](chunk_model.md)
+
+### `meth_smooth` {#meth_smooth}
+
+Purpose: tricube-weighted pseudobulk smoothing over per-position methylation fractions (MethSCAn `smooth` equivalent).
+
+Inputs:
+
+- `work/<sample>/meth/matrix/{chrom}.npz` (CSR store from `allc_to_matrix`)
+
+Workflow keys (when enabled via `run_meth_analysis`):
+
+| Key | Default |
+|-----|---------|
+| `meth_smooth_bandwidth` | `1000` |
+| `meth_smooth_use_weights` | `false` |
+
+Outputs under `work/<sample>/meth/matrix/smoothed/`:
+
+| Path | Description |
+|------|-------------|
+| `{chrom}.csv.gz` | two columns: genomic position, smoothed methylation fraction |
+| `run_info.json` | stage parameters and runtime metadata |
+
+Contract:
+
+- Single sample-level job; reads the active CSR matrix store under `meth/matrix/`.
+- Requires prior `allc_to_matrix` output.
+
+See also: [stage notes](stage_notes/meth_smooth.md) · [chunk model](chunk_model.md)
+
+### `meth_scan` {#meth_scan}
+
+Purpose: sliding-window scan for variably methylated regions (VMRs; MethSCAn `scan` equivalent).
+
+Inputs:
+
+- `work/<sample>/meth/matrix/{chrom}.npz`
+- `work/<sample>/meth/matrix/smoothed/{chrom}.csv.gz`
+
+Workflow keys (when enabled via `run_meth_analysis`):
+
+| Key | Default |
+|-----|---------|
+| `meth_scan_bandwidth` | `2000` |
+| `meth_scan_stepsize` | `100` |
+| `meth_scan_var_threshold` | `0.02` |
+| `meth_scan_min_cells` | `6` |
+| `meth_scan_bridge_gaps` | `0` |
+| `meth_matrix_cores` | `8` |
+
+Outputs under `work/<sample>/meth/vmr/`:
+
+| Path | Description |
+|------|-------------|
+| `vmrs.bed` | tab-separated: `chromosome`, `VMR_start`, `VMR_end`, `variance`, `n_sites`, `n_cells` (no header by default) |
+| `run_info.json` | stage parameters, variance threshold, VMR counts |
+
+Contract:
+
+- Single sample-level job; requires prior `meth_smooth` output.
+- Global variance threshold is determined on the largest chromosome (by CSR file size), then applied genome-wide.
+- Fails if no VMR passes `--min-cells`.
+
+See also: [stage notes](stage_notes/meth_scan.md) · [chunk model](chunk_model.md)

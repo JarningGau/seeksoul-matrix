@@ -17,17 +17,19 @@ Per-stage confidence (what was actually exercised):
 - saturation: local eleven-stage e2e + HPC eleven-stage e2e; algorithm review fixes applied
 - qc_summary: local real run (`work/dd-met5-example`, 50 cells); dry-run in twelve-stage driver — **needs biological sanity check**; not HPC-submitted
 - allc_to_matrix: local run on `work/dd-met5-example` (50 cells, `filtered_barcode`) + `make_cmd` dry-run; MethSCAn `prepare` parity **passed** (all-context: exact match on `dd-met5-example`). Default `meth_context=CG` is intentional (CpG-only). Also exercised on `work/C283_Brain_DNAme_S1` (300 cells); Slurm meth path not cluster-tested
+- meth_smooth: local run on `work/dd-met5-example` (50 cells, CG matrix) + `meth-smooth-dry-run`; MethSCAn `smooth` parity **passed** (max abs diff `0.0` on main chroms vs v1.1.0 reference)
+- meth_scan: local run on `work/dd-met5-example` (2 VMRs, default params) + `meth-scan-dry-run`; MethSCAn `scan` parity **passed** (exact BED match vs v1.1.0 reference)
 
 Workflow drivers:
 
 - methylation-only `run.sh` (`workflow/dd_met5_test.json`): twelve stages through `qc_summary` (stage script generation + local runs)
-- methylation-only with `run_meth_analysis: true`: `allc_to_matrix` stage script generation validated (`meth-allc-to-matrix-dry-run`); full thirteen-stage local e2e not run
-- methylation-only `run.sbatch` (`dd_met5_test.json`): HPC submit validated through **saturation** (eleven stages at time of HPC run); `qc_summary` Slurm path not cluster-tested
+- methylation-only with `run_meth_analysis: true`: fifteen-stage script generation validated (`meth-e2e-dry-run`: `allc_to_matrix` → `meth_smooth` → `meth_scan`); full fifteen-stage local `run.sh` execution not run end-to-end in one command
+- methylation-only `run.sbatch` (`dd_met5_test.json`): HPC submit validated through **saturation** (eleven stages at time of HPC run); `qc_summary` Slurm path not cluster-tested; meth analysis Slurm paths dry-run only
 - `workflow/dd_met5_slurm.json`: Slurm command generation dry-run only; production-scale cluster submit not validated
 
 ## Partially validated / not exercised
 
-- **Meth analysis path** (`run_meth_analysis: true`): `allc_to_matrix` validated vs MethSCAn `prepare`; `meth_smooth` / `meth_scan` not implemented
+- **Meth analysis path** (`run_meth_analysis: true`): Phase 1 complete (`allc_to_matrix` → `meth_smooth` → `meth_scan`); `meth_matrix_filter` / `meth_matrix` not implemented (Phase 2)
 - **gexcb path** (`workflow/dd_met5_gexcb_test.json`): local `split_bams` → `merge_fr_bams` → `bam_to_allc` on 22 barcodes (reuses prior align BAMs); full `--stage all` from raw FASTQ not run; Slurm gexcb not tested
 - **Automated tests:** none yet (manual validation only)
 

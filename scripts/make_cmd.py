@@ -38,6 +38,8 @@ POST_BAM_SORT_GEXCB = [
 ]
 METH_STAGE_SEQUENCE = [
     "allc_to_matrix",
+    "meth_smooth",
+    "meth_scan",
 ]
 ALL_STAGE_NAMES = [
     *BASE_STAGE_SEQUENCE,
@@ -60,12 +62,21 @@ STAGE_REQUIRED_FIELDS = {
     "saturation": ["chrom_size_path"],
     "qc_summary": [],
     "allc_to_matrix": [],
+    "meth_smooth": [],
+    "meth_scan": [],
 }
 DEFAULT_BARCODE_WHITELIST = "whitelist/DD-MET5/U3CB_methylation.txt.gz"
 DEFAULT_EXPECTED_CELL_NUM = 3000
 DEFAULT_SPLIT_FASTQ_PREFIX_BASES = 1
 DEFAULT_METH_CONTEXT = "CG"
 DEFAULT_METH_CHUNKSIZE = 10_000_000
+DEFAULT_METH_SMOOTH_BANDWIDTH = 1000
+DEFAULT_METH_SCAN_BANDWIDTH = 2000
+DEFAULT_METH_SCAN_STEPSIZE = 100
+DEFAULT_METH_SCAN_VAR_THRESHOLD = 0.02
+DEFAULT_METH_SCAN_MIN_CELLS = 6
+DEFAULT_METH_SCAN_BRIDGE_GAPS = 0
+DEFAULT_METH_MATRIX_CORES = 8
 
 
 def build_stage_sequence(settings: dict) -> list[str]:
@@ -319,7 +330,10 @@ def parse_args() -> argparse.Namespace:
         "--run-meth-analysis",
         action="store_true",
         default=None,
-        help="Append optional meth analysis stages (allc_to_matrix) after qc_summary.",
+        help=(
+            "Append optional meth analysis stages "
+            "(allc_to_matrix, meth_smooth, meth_scan) after qc_summary."
+        ),
     )
     parser.add_argument(
         "--allc-to-matrix-script",
@@ -349,6 +363,61 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument(
         "--meth-exclude-contigs",
         help="Comma-separated contigs to exclude in allc_to_matrix.",
+    )
+    parser.add_argument(
+        "--meth-smooth-script",
+        help="Path to meth_smooth script. Default: scripts/meth_smooth.py.",
+    )
+    parser.add_argument(
+        "--meth-smooth-bandwidth",
+        type=int,
+        help=f"Smoothing bandwidth for meth_smooth. Default: {DEFAULT_METH_SMOOTH_BANDWIDTH}.",
+    )
+    parser.add_argument(
+        "--meth-smooth-use-weights",
+        action="store_true",
+        default=None,
+        help="Weight methylation sites by log1p(coverage) in meth_smooth.",
+    )
+    parser.add_argument(
+        "--meth-scan-script",
+        help="Path to meth_scan script. Default: scripts/meth_scan.py.",
+    )
+    parser.add_argument(
+        "--meth-scan-bandwidth",
+        type=int,
+        help=f"Sliding-window bandwidth for meth_scan. Default: {DEFAULT_METH_SCAN_BANDWIDTH}.",
+    )
+    parser.add_argument(
+        "--meth-scan-stepsize",
+        type=int,
+        help=f"Sliding-window step size for meth_scan. Default: {DEFAULT_METH_SCAN_STEPSIZE}.",
+    )
+    parser.add_argument(
+        "--meth-scan-var-threshold",
+        type=float,
+        help=(
+            "Top variable-window fraction for meth_scan VMR merge. "
+            f"Default: {DEFAULT_METH_SCAN_VAR_THRESHOLD}."
+        ),
+    )
+    parser.add_argument(
+        "--meth-scan-min-cells",
+        type=int,
+        help=f"Minimum cells per VMR for meth_scan. Default: {DEFAULT_METH_SCAN_MIN_CELLS}.",
+    )
+    parser.add_argument(
+        "--meth-scan-bridge-gaps",
+        type=int,
+        help=(
+            "Merge neighboring VMRs within this gap (bp) in meth_scan. "
+            f"Default: {DEFAULT_METH_SCAN_BRIDGE_GAPS} (off)."
+        ),
+    )
+    parser.add_argument(
+        "--meth-matrix-cores",
+        type=int,
+        help=f"CPU threads for meth_scan. Default: {DEFAULT_METH_MATRIX_CORES}.",
     )
     parser.add_argument(
         "--submit",
@@ -712,6 +781,42 @@ def build_allc_to_matrix_command(
         command.append("--main-chroms-only")
     if getattr(args, "meth_exclude_contigs", None):
         command.extend(["--exclude-contigs", str(args.meth_exclude_contigs)])
+    return quoted(command)
+
+
+def build_meth_smooth_command(args: argparse.Namespace, sample_work: Path) -> str:
+    command = [
+        sys.executable,
+        str(args.meth_smooth_script),
+        "--work-path",
+        str(sample_work),
+        "--bandwidth",
+        str(args.meth_smooth_bandwidth),
+    ]
+    if args.meth_smooth_use_weights:
+        command.append("--use-weights")
+    return quoted(command)
+
+
+def build_meth_scan_command(args: argparse.Namespace, sample_work: Path) -> str:
+    command = [
+        sys.executable,
+        str(args.meth_scan_script),
+        "--work-path",
+        str(sample_work),
+        "--bandwidth",
+        str(args.meth_scan_bandwidth),
+        "--stepsize",
+        str(args.meth_scan_stepsize),
+        "--var-threshold",
+        str(args.meth_scan_var_threshold),
+        "--min-cells",
+        str(args.meth_scan_min_cells),
+        "--bridge-gaps",
+        str(args.meth_scan_bridge_gaps),
+        "--threads",
+        str(args.meth_matrix_cores),
+    ]
     return quoted(command)
 
 
@@ -1154,6 +1259,34 @@ def validate_inputs_for_stage(
             raise FileNotFoundError(
                 f"no per-cell ALLC files found under {allcools_dir}"
             )
+    elif stage == "meth_smooth":
+        script_path = Path(settings["meth_smooth_script"])
+        if not script_path.is_file():
+            raise FileNotFoundError(f"meth_smooth_script not found: {script_path}")
+        matrix_dir = sample_work / "meth" / "matrix"
+        npz_files = list(matrix_dir.glob("*.npz"))
+        if not npz_files:
+            raise FileNotFoundError(
+                f"no CSR matrix files found under {matrix_dir}"
+            )
+    elif stage == "meth_scan":
+        script_path = Path(settings["meth_scan_script"])
+        if not script_path.is_file():
+            raise FileNotFoundError(f"meth_scan_script not found: {script_path}")
+        matrix_dir = sample_work / "meth" / "matrix"
+        npz_files = list(matrix_dir.glob("*.npz"))
+        if not npz_files:
+            raise FileNotFoundError(
+                f"no CSR matrix files found under {matrix_dir}"
+            )
+        smoothed_dir = matrix_dir / "smoothed"
+        smoothed_files = list(smoothed_dir.glob("*.csv.gz")) + list(
+            smoothed_dir.glob("*.csv")
+        )
+        if not smoothed_files:
+            raise FileNotFoundError(
+                f"no smoothed chromosome files found under {smoothed_dir}"
+            )
     else:
         raise ValueError(f"unsupported stage for input validation: {stage}")
 
@@ -1270,6 +1403,30 @@ def resolve_settings(args: argparse.Namespace) -> dict:
         "meth_exclude_contigs": pick(
             args.meth_exclude_contigs, cfg.get("meth_exclude_contigs")
         ),
+        "meth_smooth_script": pick(args.meth_smooth_script, cfg.get("meth_smooth_script")),
+        "meth_smooth_bandwidth": pick(
+            args.meth_smooth_bandwidth, cfg.get("meth_smooth_bandwidth")
+        ),
+        "meth_smooth_use_weights": (
+            args.meth_smooth_use_weights
+            if args.meth_smooth_use_weights is not None
+            else bool(cfg.get("meth_smooth_use_weights"))
+        ),
+        "meth_scan_script": pick(args.meth_scan_script, cfg.get("meth_scan_script")),
+        "meth_scan_bandwidth": pick(
+            args.meth_scan_bandwidth, cfg.get("meth_scan_bandwidth")
+        ),
+        "meth_scan_stepsize": pick(args.meth_scan_stepsize, cfg.get("meth_scan_stepsize")),
+        "meth_scan_var_threshold": pick(
+            args.meth_scan_var_threshold, cfg.get("meth_scan_var_threshold")
+        ),
+        "meth_scan_min_cells": pick(
+            args.meth_scan_min_cells, cfg.get("meth_scan_min_cells")
+        ),
+        "meth_scan_bridge_gaps": pick(
+            args.meth_scan_bridge_gaps, cfg.get("meth_scan_bridge_gaps")
+        ),
+        "meth_matrix_cores": pick(args.meth_matrix_cores, cfg.get("meth_matrix_cores")),
         "slurm_partition": pick(args.slurm_partition, stage_slurm_cfg.get("partition")),
         "slurm_mem": pick(args.slurm_mem, stage_slurm_cfg.get("mem")),
         "slurm_cpus_per_task": pick(
@@ -1378,7 +1535,10 @@ def resolve_settings(args: argparse.Namespace) -> dict:
             settings["qc_summary_script"] or "scripts/qc_summary.py"
         )
         settings["mito_chromosomes"] = settings["mito_chromosomes"] or "chrM"
-    if stage in ("allc_to_matrix", "all") or settings.get("run_meth_analysis"):
+    if (
+        stage in ("allc_to_matrix", "meth_smooth", "meth_scan", "all")
+        or settings.get("run_meth_analysis")
+    ):
         settings["allc_to_matrix_script"] = (
             settings["allc_to_matrix_script"] or "scripts/allc_to_matrix.py"
         )
@@ -1393,6 +1553,60 @@ def resolve_settings(args: argparse.Namespace) -> dict:
         settings["meth_round_sites"] = bool(settings["meth_round_sites"])
         settings["meth_main_chroms_only"] = bool(settings["meth_main_chroms_only"])
         settings["meth_exclude_contigs"] = settings["meth_exclude_contigs"] or ""
+        settings["meth_smooth_script"] = (
+            settings["meth_smooth_script"] or "scripts/meth_smooth.py"
+        )
+        settings["meth_smooth_bandwidth"] = int(
+            settings["meth_smooth_bandwidth"]
+            if settings["meth_smooth_bandwidth"] is not None
+            else DEFAULT_METH_SMOOTH_BANDWIDTH
+        )
+        if settings["meth_smooth_bandwidth"] < 1:
+            raise ValueError("meth_smooth_bandwidth must be >= 1")
+        settings["meth_smooth_use_weights"] = bool(settings["meth_smooth_use_weights"])
+        settings["meth_scan_script"] = settings["meth_scan_script"] or "scripts/meth_scan.py"
+        settings["meth_scan_bandwidth"] = int(
+            settings["meth_scan_bandwidth"]
+            if settings["meth_scan_bandwidth"] is not None
+            else DEFAULT_METH_SCAN_BANDWIDTH
+        )
+        settings["meth_scan_stepsize"] = int(
+            settings["meth_scan_stepsize"]
+            if settings["meth_scan_stepsize"] is not None
+            else DEFAULT_METH_SCAN_STEPSIZE
+        )
+        settings["meth_scan_var_threshold"] = float(
+            settings["meth_scan_var_threshold"]
+            if settings["meth_scan_var_threshold"] is not None
+            else DEFAULT_METH_SCAN_VAR_THRESHOLD
+        )
+        settings["meth_scan_min_cells"] = int(
+            settings["meth_scan_min_cells"]
+            if settings["meth_scan_min_cells"] is not None
+            else DEFAULT_METH_SCAN_MIN_CELLS
+        )
+        settings["meth_scan_bridge_gaps"] = int(
+            settings["meth_scan_bridge_gaps"]
+            if settings["meth_scan_bridge_gaps"] is not None
+            else DEFAULT_METH_SCAN_BRIDGE_GAPS
+        )
+        settings["meth_matrix_cores"] = int(
+            settings["meth_matrix_cores"]
+            if settings["meth_matrix_cores"] is not None
+            else DEFAULT_METH_MATRIX_CORES
+        )
+        if settings["meth_scan_bandwidth"] < 1:
+            raise ValueError("meth_scan_bandwidth must be >= 1")
+        if settings["meth_scan_stepsize"] < 1:
+            raise ValueError("meth_scan_stepsize must be >= 1")
+        if not 0 <= settings["meth_scan_var_threshold"] <= 1:
+            raise ValueError("meth_scan_var_threshold must be between 0 and 1")
+        if settings["meth_scan_min_cells"] < 1:
+            raise ValueError("meth_scan_min_cells must be >= 1")
+        if settings["meth_scan_bridge_gaps"] < 0:
+            raise ValueError("meth_scan_bridge_gaps must be >= 0")
+        if settings["meth_matrix_cores"] < 1:
+            raise ValueError("meth_matrix_cores must be >= 1")
     settings["_stage_sequence"] = build_stage_sequence(settings)
     if stage in ("count_mapped_reads", "estimated_cells") and settings["_barcode_mode"] == "gexcb":
         raise ValueError(
@@ -1645,6 +1859,18 @@ def driver_scripts_for_stage(
             script
             for script in scripts
             if script.name.startswith(f"{prefix}_allc_to_matrix")
+        ]
+    if stage_name == "meth_smooth":
+        return [
+            script
+            for script in scripts
+            if script.name.startswith(f"{prefix}_meth_smooth")
+        ]
+    if stage_name == "meth_scan":
+        return [
+            script
+            for script in scripts
+            if script.name.startswith(f"{prefix}_meth_scan")
         ]
     return scripts
 
@@ -2594,6 +2820,84 @@ def main() -> int:
                 ),
                 slurm_error=settings["slurm_error"].replace(
                     "%x", f"seeksoul_allc_to_matrix_{settings['sample_id']}"
+                ),
+            )
+            generate_slurm_script(command, script_path, log_dir, slurm_args)
+        generated_scripts.append(script_path)
+    elif settings["stage"] == "meth_smooth":
+        command_args = argparse.Namespace(
+            meth_smooth_script=settings["meth_smooth_script"],
+            meth_smooth_bandwidth=settings["meth_smooth_bandwidth"],
+            meth_smooth_use_weights=settings["meth_smooth_use_weights"],
+        )
+        command = build_meth_smooth_command(command_args, sample_work)
+        if settings["runner"] == "local":
+            script_path = command_dir / stage_script_name(settings, "meth_smooth")
+        else:
+            script_path = command_dir / stage_script_name(
+                settings, "meth_smooth", suffix="sbatch"
+            )
+        print(f"[make_cmd] runner={settings['runner']}")
+        print(f"[make_cmd] stage={settings['stage']}")
+        print(f"[make_cmd] sample_id={settings['sample_id']}")
+        print(f"[make_cmd] script={script_path}")
+        print(f"[make_cmd] command={command}")
+        if settings["dry_run"]:
+            return 0
+        if settings["runner"] == "local":
+            generate_local_script(command, script_path)
+        else:
+            slurm_args = argparse.Namespace(
+                job_name=f"seeksoul_meth_smooth_{settings['sample_id']}",
+                slurm_partition=settings["slurm_partition"],
+                slurm_mem=settings["slurm_mem"],
+                slurm_cpus_per_task=settings["slurm_cpus_per_task"],
+                slurm_output=settings["slurm_output"].replace(
+                    "%x", f"seeksoul_meth_smooth_{settings['sample_id']}"
+                ),
+                slurm_error=settings["slurm_error"].replace(
+                    "%x", f"seeksoul_meth_smooth_{settings['sample_id']}"
+                ),
+            )
+            generate_slurm_script(command, script_path, log_dir, slurm_args)
+        generated_scripts.append(script_path)
+    elif settings["stage"] == "meth_scan":
+        command_args = argparse.Namespace(
+            meth_scan_script=settings["meth_scan_script"],
+            meth_scan_bandwidth=settings["meth_scan_bandwidth"],
+            meth_scan_stepsize=settings["meth_scan_stepsize"],
+            meth_scan_var_threshold=settings["meth_scan_var_threshold"],
+            meth_scan_min_cells=settings["meth_scan_min_cells"],
+            meth_scan_bridge_gaps=settings["meth_scan_bridge_gaps"],
+            meth_matrix_cores=settings["meth_matrix_cores"],
+        )
+        command = build_meth_scan_command(command_args, sample_work)
+        if settings["runner"] == "local":
+            script_path = command_dir / stage_script_name(settings, "meth_scan")
+        else:
+            script_path = command_dir / stage_script_name(
+                settings, "meth_scan", suffix="sbatch"
+            )
+        print(f"[make_cmd] runner={settings['runner']}")
+        print(f"[make_cmd] stage={settings['stage']}")
+        print(f"[make_cmd] sample_id={settings['sample_id']}")
+        print(f"[make_cmd] script={script_path}")
+        print(f"[make_cmd] command={command}")
+        if settings["dry_run"]:
+            return 0
+        if settings["runner"] == "local":
+            generate_local_script(command, script_path)
+        else:
+            slurm_args = argparse.Namespace(
+                job_name=f"seeksoul_meth_scan_{settings['sample_id']}",
+                slurm_partition=settings["slurm_partition"],
+                slurm_mem=settings["slurm_mem"],
+                slurm_cpus_per_task=settings["slurm_cpus_per_task"],
+                slurm_output=settings["slurm_output"].replace(
+                    "%x", f"seeksoul_meth_scan_{settings['sample_id']}"
+                ),
+                slurm_error=settings["slurm_error"].replace(
+                    "%x", f"seeksoul_meth_scan_{settings['sample_id']}"
                 ),
             )
             generate_slurm_script(command, script_path, log_dir, slurm_args)

@@ -93,6 +93,16 @@
             "partition": "amd-ep2",
             "mem": "16G",
             "cpus_per_task": 4
+        },
+        "meth_smooth": {
+            "partition": "amd-ep2",
+            "mem": "16G",
+            "cpus_per_task": 4
+        },
+        "meth_scan": {
+            "partition": "amd-ep2",
+            "mem": "16G",
+            "cpus_per_task": 8
         }
     },
     "run_meth_analysis": false,
@@ -100,5 +110,12 @@
     "meth_chunksize": 10000000,
     "meth_round_sites": false,
     "meth_main_chroms_only": false,
-    "meth_exclude_contigs": ""
+    "meth_exclude_contigs": "",
+    "meth_smooth_bandwidth": 1000,
+    "meth_scan_bandwidth": 2000,
+    "meth_scan_stepsize": 100,
+    "meth_scan_var_threshold": 0.02,
+    "meth_scan_min_cells": 6,
+    "meth_scan_bridge_gaps": 0,
+    "meth_matrix_cores": 8
 }

@@ -1,6 +1,6 @@
 # MethSCAn-native analysis — implementation spec
 
-**Status:** Phase 1 in progress — `allc_to_matrix` implemented; MethSCAn `prepare` parity passed; `meth_smooth` / `meth_scan` pending.  
+**Status:** Phase 1 complete — `allc_to_matrix`, `meth_smooth`, `meth_scan` implemented; MethSCAn `prepare` parity passed; VMR parity pending validation run.  
 **Last updated:** 2026-06-25
 
 ## Summary
@@ -180,9 +180,9 @@ Use `MethSCAn/methscan/*.py` as a behavioral spec; reimplement in `scripts/lib/m
 - [x] **ALLC → COO chunks → CSR** (`prepare.py`): chromosome chunking (`chunksize`, default 10 Mbp), COO temp files, CSR `indptr` construction, `int8` data values.
 - [x] **Cell stats** (`cell_stats.csv`): `n_obs`, `n_meth`, `global_meth_frac` per cell.
 - [ ] **Filter** (`filter.py`): column subset on CSR; rewrite `column_header.txt` + stats.
-- [ ] **Smooth** (`smooth.py`): tricube kernel, bandwidth default 1000 bp, optional `log1p(coverage)` weights.
-- [ ] **Shrunken residuals** (`numerics.py`): `_calc_mean_shrunken_residuals` for windowed scan/matrix.
-- [ ] **Scan** (`scan.py`): sliding window (default bw 2000, step 100), variance threshold (default 0.02), `min_cells` (default 6), optional `bridge_gaps`, parallel over chromosomes.
+- [x] **Smooth** (`smooth.py`): tricube kernel, bandwidth default 1000 bp, optional `log1p(coverage)` weights.
+- [x] **Shrunken residuals** (`numerics.py`): `calc_mean_shrunken_residuals` for windowed scan/matrix.
+- [x] **Scan** (`scan.py`): sliding window (default bw 2000, step 100), variance threshold (default 0.02), `min_cells` (default 6), optional `bridge_gaps`, parallel over chromosomes.
 - [ ] **Matrix** (`matrix.py`): per-region counts / fractions / mean shrunken residuals; optional sparse `.mtx.gz` output.
 - [ ] **Diff** (`diff.py`, phase 2): t-test windows, permutation FDR, two groups only.
 - [ ] **Profile** (`profile.py`, phase 2): fixed-width profiles around sorted BED regions.
@@ -200,7 +200,7 @@ Document any intentional numeric deviations from MethSCAn in stage notes.
 ## Workflow / `make_cmd.py` integration
 
 - [x] `allc_to_matrix` in stage list; gated by `run_meth_analysis` (default `false`).
-- [ ] `meth_smooth`, `meth_scan`, … stage names and `STAGE_REQUIRED_FIELDS`.
+- [x] `meth_smooth`, `meth_scan` stage names and `STAGE_REQUIRED_FIELDS`.
 - [ ] Workflow keys (draft):
 
 | Key | Default | Used by |
@@ -218,7 +218,7 @@ Document any intentional numeric deviations from MethSCAn in stage notes.
 | `vmr_regions_bed` | — | `meth_matrix` (optional VMR-free regions BED) |
 
 - [x] Pixi dry-run: `meth-allc-to-matrix-dry-run`
-- [ ] Pixi dry-run: `meth-smooth-dry-run`, `meth-scan-dry-run`, `meth-e2e-dry-run`
+- [x] Pixi dry-run: `meth-smooth-dry-run`, `meth-scan-dry-run`, `meth-e2e-dry-run`
 - [ ] Slurm: single aggregate jobs for sample-wide stages (like `saturation`), not per analysis chunk.
 
 ---
@@ -235,12 +235,12 @@ Document any intentional numeric deviations from MethSCAn in stage notes.
 
 1. [x] `scripts/lib/meth_matrix/` — ALLC reader + CSR build.
 2. [x] `scripts/allc_to_matrix.py` — gather ALLC across chunks; write `work/<sample>/meth/matrix/`.
-3. [ ] `scripts/meth_smooth.py`
-4. [ ] `scripts/meth_scan.py`
-5. [x] `make_cmd.py` wiring + `workflow/dd_met5_test.json` optional block (`allc_to_matrix` only).
-6. [x] Docs: `contracts.md`, `stage_notes/allc_to_matrix.md`, `status.md`, `logs.md`; [ ] `stage_notes/meth_scan.md` (pending implementation).
+3. [x] `scripts/meth_smooth.py`
+4. [x] `scripts/meth_scan.py`
+5. [x] `make_cmd.py` wiring + `workflow/dd_met5_test.json` optional block (meth analysis stages).
+6. [x] Docs: `contracts.md`, `stage_notes/allc_to_matrix.md`, `stage_notes/meth_smooth.md`, `stage_notes/meth_scan.md`, `status.md`, `logs.md`.
 
-**MVP validation (`prepare` / `allc_to_matrix`):** [x] MethSCAn `prepare` parity passed on `work/dd-met5-example` (50 cells, all-context). **Pending:** VMR comparison after `meth_smooth` + `meth_scan` ship.
+**MVP validation (`prepare` / `allc_to_matrix`):** [x] MethSCAn `prepare` parity passed on `work/dd-met5-example` (50 cells, all-context). **MVP validation (`smooth` / `scan`):** [x] MethSCAn v1.1.0 parity passed on `work/dd-met5-example` (50 cells, CG): smooth exact; scan 2 VMRs exact BED match.
 
 ### Phase 2 — Filter + region matrix
 

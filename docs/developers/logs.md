@@ -2,6 +2,36 @@
 
 For current reliability, see [`status.md`](status.md). This file is the append-only history.
 
+## 2026-06-25 — meth_smooth + meth_scan Phase 1 (MethSCAn parity passed)
+
+**Task:** Implement `meth_smooth` and `meth_scan` stages; wire workflow driver; validate vs MethSCAn on `work/dd-met5-example`.
+
+**Files changed:**
+- `scripts/lib/meth_matrix/numerics.py`, `smooth.py`, `scan.py`, `__init__.py`
+- `scripts/meth_smooth.py`, `scripts/meth_scan.py`
+- `scripts/make_cmd.py`
+- `workflow/dd_met5_test.json`, `pixi.toml`
+- `docs/developers/contracts.md`
+- `docs/developers/stage_notes/meth_smooth.md`, `meth_scan.md`
+- `docs/methscan_builtin_spec.md`
+- `docs/developers/status.md`
+- `docs/developers/logs.md`
+
+**Summary:**
+- Clean-room ports of MethSCAn `smooth` and `scan`: tricube pseudobulk smoothing → `matrix/smoothed/{chrom}.csv.gz`; sliding-window VMR scan → `vmr/vmrs.bed`.
+- `METH_STAGE_SEQUENCE` extended to `allc_to_matrix` → `meth_smooth` → `meth_scan` when `run_meth_analysis: true`.
+- Workflow keys: `meth_smooth_bandwidth`, `meth_scan_*`, `meth_matrix_cores`.
+
+**Checks performed:**
+- `pixi run python scripts/meth_smooth.py --help` / `meth_scan.py --help`
+- `pixi run meth-smooth-dry-run`, `meth-scan-dry-run`, `meth-e2e-dry-run`
+- Local run on `work/dd-met5-example` (50 cells, CG): smooth 26 chroms; scan reported 2 VMRs
+- MethSCAn v1.1.0 parity (temporary pip install, not added to pixi): smooth max abs diff `0.0` on all main chroms; VMR BED exact match (2 regions, identical coordinates and stats)
+
+**Status:** done
+
+**Notes:** Smoothed output uses `.csv.gz` (MethSCAn uses uncompressed `.csv`); numeric parity compares decoded rows. Slurm meth_smooth/meth_scan not cluster-tested.
+
 ## 2026-06-25 — allc_to_matrix MethSCAn prepare parity (accepted)
 
 **Task:** Record acceptance that `allc_to_matrix` matches MethSCAn `prepare` on `work/dd-met5-example` (50 cells, all-context comparison).
