@@ -90,22 +90,22 @@
         },
         "allc_to_matrix": {
             "partition": "amd-ep2",
-            "mem": "32G",
+            "mem": "4G",
             "cpus_per_task": 8
         },
         "meth_smooth": {
             "partition": "amd-ep2",
-            "mem": "32G",
+            "mem": "16G",
             "cpus_per_task": 8
         },
         "meth_scan": {
             "partition": "amd-ep2",
-            "mem": "64G",
+            "mem": "4G",
             "cpus_per_task": 16
         },
         "meth_matrix": {
             "partition": "amd-ep2",
-            "mem": "32G",
+            "mem": "4G",
             "cpus_per_task": 16
         }
     },
