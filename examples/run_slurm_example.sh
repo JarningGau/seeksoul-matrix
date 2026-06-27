@@ -30,3 +30,16 @@ pixi run python scripts/make_cmd.py \
   --workflow-config workflow/dd_met5_slurm.json \
   --stage qc_summary \
   --sample-id C283_Brain_DNAme
+
+## HPC C283 meth analysis
+for stage in allc_to_matrix meth_smooth meth_scan meth_matrix; do
+  pixi run python scripts/make_cmd.py \
+    --workflow-config workflow/dd_met5_slurm.json \
+    --stage "$stage" \
+    --sample-id C283_Brain_DNAme
+done
+
+pixi run python scripts/make_cmd.py \
+--workflow-config workflow/dd_met5_slurm.json \
+--stage meth_smooth \
+--sample-id C283_Brain_DNAme
