@@ -36,6 +36,7 @@ Workflow drivers:
 - **gexcb Slurm path** (`dd_met5_gexcb_test.json`): not cluster-tested
 - **gexcb + meth analysis Slurm path**: dry-run only
 - **Meth analysis Slurm path** (`run_meth_analysis: true`): command generation dry-run only; sixteen-stage cluster submit not validated
+- **`--stage` contiguous list** (multi-stage driver, not `all`): dry-run validated (lane prefix through `bismark_align`; tail from `bam_sort`)
 - **Automated tests:** none yet (manual validation only)
 
 ## Known limitations (out of scope)
@@ -46,6 +47,7 @@ Workflow drivers:
 - Sample-wide barcode union across analysis chunks in per-chunk stages ([`chunk_model.md`](chunk_model.md))
 - `meth_matrix_filter` (MethSCAn `filter`) — skipped; cell QC in `allc_to_matrix` via `filtered_barcode`
 - `meth_diff` / `meth_profile` (MethSCAn `diff` / `profile`) — **not planned**; meth analysis scope ends at `meth_matrix` ([`methscan_builtin_spec.md`](../methscan_builtin_spec.md))
+- Multi-pair FASTQ input is not a workflow-driver feature. HPC: submit each lane with `make_cmd --runner slurm --submit` and a contiguous `--stage` list through `bismark_align`, then [`examples/run_multi_lane.sh`](../../examples/run_multi_lane.sh) `--phase harvest` (`samtools cat` into the final sample). Cookbook: [`examples/run_slurm_example.sh`](../../examples/run_slurm_example.sh). Local `--phase lanes|all` still runs `--runner local`. Stage scripts are unchanged.
 
 ## Do not change silently
 

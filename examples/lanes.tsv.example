@@ -1,0 +1,17 @@
+# lane_id	r1	r2
+# One pair per line. lane_id must be [A-Za-z0-9-]+ (no underscore).
+# Paths may be absolute or relative to the repository root.
+# Rolling upload: list all pairs now. HPC: after each lane's Slurm DAG
+# finishes, run examples/run_multi_lane.sh --phase harvest. Tail waits until
+# every row has work/<final>/lanes/<id>.done.
+L01	/storage2/liliLab/gaojianing/SeekSpace-DNAme-data/C283_Brain/C283_Brain_DNAme_pilot_R1.fastq.gz	/storage2/liliLab/gaojianing/SeekSpace-DNAme-data/C283_Brain/C283_Brain_DNAme_pilot_R2.fastq.gz
+L02	/storage2/liliLab/gaojianing/SeekSpace-DNAme-data/C283_Brain/202609121633_B_SG260912-6_XYRD_WTJW1090_Met_L00_R1.fq.gz	/storage2/liliLab/gaojianing/SeekSpace-DNAme-data/C283_Brain/202609121633_B_SG260912-6_XYRD_WTJW1090_Met_L00_R2.fq.gz
+L03	/storage2/liliLab/gaojianing/SeekSpace-DNAme-data/C283_Brain/202609121638_B_SG260912-5_XYRD_WTJW1090_Met_L00_R1.fq.gz	/storage2/liliLab/gaojianing/SeekSpace-DNAme-data/C283_Brain/202609121638_B_SG260912-5_XYRD_WTJW1090_Met_L00_R2.fq.gz
+L04	/storage2/liliLab/gaojianing/SeekSpace-DNAme-data/C283_Brain/202609111755_B_SG260911-3_XYRD_WTJW1090_Met_L01_R1.fq.gz	/storage2/liliLab/gaojianing/SeekSpace-DNAme-data/C283_Brain/202609111755_B_SG260911-3_XYRD_WTJW1090_Met_L01_R2.fq.gz
+L05	/storage2/liliLab/gaojianing/SeekSpace-DNAme-data/C283_Brain/202609111755_B_SG260911-3_XYRD_WTJW1090_Met_L02_R1.fq.gz	/storage2/liliLab/gaojianing/SeekSpace-DNAme-data/C283_Brain/202609111755_B_SG260911-3_XYRD_WTJW1090_Met_L02_R2.fq.gz
+L06	/storage2/liliLab/gaojianing/SeekSpace-DNAme-data/C283_Brain/202609111755_B_SG260911-3_XYRD_WTJW1090_Met_L03_R1.fq.gz	/storage2/liliLab/gaojianing/SeekSpace-DNAme-data/C283_Brain/202609111755_B_SG260911-3_XYRD_WTJW1090_Met_L03_R2.fq.gz
+L07	/storage2/liliLab/gaojianing/SeekSpace-DNAme-data/C283_Brain/202609111755_B_SG260911-3_XYRD_WTJW1090_Met_L04_R1.fq.gz	/storage2/liliLab/gaojianing/SeekSpace-DNAme-data/C283_Brain/202609111755_B_SG260911-3_XYRD_WTJW1090_Met_L04_R2.fq.gz
+L08	/storage2/liliLab/gaojianing/SeekSpace-DNAme-data/C283_Brain/202609111755_B_SG260911-3_XYRD_WTJW1090_Met_L05_R1.fq.gz	/storage2/liliLab/gaojianing/SeekSpace-DNAme-data/C283_Brain/202609111755_B_SG260911-3_XYRD_WTJW1090_Met_L05_R2.fq.gz
+L09	/storage2/liliLab/gaojianing/SeekSpace-DNAme-data/C283_Brain/202609111755_B_SG260911-3_XYRD_WTJW1090_Met_L06_R1.fq.gz	/storage2/liliLab/gaojianing/SeekSpace-DNAme-data/C283_Brain/202609111755_B_SG260911-3_XYRD_WTJW1090_Met_L06_R2.fq.gz
+L10	/storage2/liliLab/gaojianing/SeekSpace-DNAme-data/C283_Brain/202609111755_B_SG260911-3_XYRD_WTJW1090_Met_L07_R1.fq.gz	/storage2/liliLab/gaojianing/SeekSpace-DNAme-data/C283_Brain/202609111755_B_SG260911-3_XYRD_WTJW1090_Met_L07_R2.fq.gz
+L11	/storage2/liliLab/gaojianing/SeekSpace-DNAme-data/C283_Brain/202609111755_B_SG260911-3_XYRD_WTJW1090_Met_L08_R1.fq.gz	/storage2/liliLab/gaojianing/SeekSpace-DNAme-data/C283_Brain/202609111755_B_SG260911-3_XYRD_WTJW1090_Met_L08_R2.fq.gz

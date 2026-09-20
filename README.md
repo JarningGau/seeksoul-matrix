@@ -58,7 +58,7 @@ Twelve stages from `fastp_split` through `qc_summary`; stable I/O contracts and 
 | [`workflow/dd_met5_test.json`](workflow/dd_met5_test.json) | Local / CI-style test config (methylation-only) |
 | [`workflow/dd_met5_slurm.json`](workflow/dd_met5_slurm.json) | Production Slurm config |
 | [`workflow/dd_met5_gexcb_test.json`](workflow/dd_met5_gexcb_test.json) | RNA-barcode (`gexcb`) path |
-| [`examples/`](examples/) | Example local and HPC invocations |
+| [`examples/`](examples/) | Example local and HPC invocations; multi-lane disk-aware queue: [`examples/run_multi_lane.sh`](examples/run_multi_lane.sh) |
 
 Generate runnable scripts with the workflow driver:
 

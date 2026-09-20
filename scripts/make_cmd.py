@@ -97,6 +97,41 @@ def build_stage_sequence(settings: dict) -> list[str]:
     return sequence
 
 
+def normalize_stage_request(raw) -> list[str]:
+    if raw is None:
+        return []
+    if isinstance(raw, str):
+        return [raw]
+    return [str(item) for item in raw]
+
+
+def resolve_driver_stages(requested: list[str], full_sequence: list[str]) -> list[str]:
+    if requested == ["all"]:
+        return list(full_sequence)
+    if "all" in requested:
+        raise ValueError("`all` cannot be combined with other --stage names")
+    if len(requested) != len(set(requested)):
+        raise ValueError("duplicate --stage names are not allowed")
+    unknown = [name for name in requested if name not in ALL_STAGE_NAMES]
+    if unknown:
+        raise ValueError(f"unsupported stage: {unknown[0]}")
+    order = {name: index for index, name in enumerate(full_sequence)}
+    missing_mode = [name for name in requested if name not in order]
+    if missing_mode:
+        raise ValueError(
+            f"stage {missing_mode[0]} is not in this barcode-mode sequence"
+        )
+    selected = sorted(requested, key=lambda name: order[name])
+    expected = full_sequence[order[selected[0]] : order[selected[-1]] + 1]
+    if selected != expected:
+        missing = [name for name in expected if name not in selected]
+        raise ValueError(
+            "requested stages must be a contiguous subsequence of the "
+            f"pipeline; missing {', '.join(missing)}"
+        )
+    return selected
+
+
 def stage_prefix_map(stage_sequence: list[str]) -> dict[str, str]:
     return {name: f"{index + 1:02d}" for index, name in enumerate(stage_sequence)}
 
@@ -148,8 +183,12 @@ def parse_args() -> argparse.Namespace:
     )
     parser.add_argument(
         "--stage",
-        choices=STAGE_CHOICES,
-        help="Workflow stage to generate command script for. Default: fastp_split.",
+        nargs="+",
+        metavar="STAGE",
+        help=(
+            "Workflow stage(s) to generate. One name, a contiguous pipeline "
+            "list, or 'all'. Default: fastp_split."
+        ),
     )
     parser.add_argument("--sample-id", help="Sample identifier.")
     parser.add_argument("--r1", help="Input R1 FASTQ(.gz).")
@@ -475,7 +514,8 @@ def parse_args() -> argparse.Namespace:
         help=(
             "Do not require prior-stage outputs under the sample work directory. "
             "For fastp_split, still skips r1/r2 existence checks when set. "
-            "When generating --stage all, this is passed to each per-stage subprocess automatically."
+            "When generating a multi-stage driver (--stage all or a stage list), "
+            "this is passed to each per-stage subprocess automatically."
         ),
     )
     parser.add_argument("--slurm-partition")
@@ -1404,7 +1444,18 @@ def resolve_settings(args: argparse.Namespace) -> dict:
     if not isinstance(slurm_cfg_raw, dict):
         raise ValueError("workflow config key 'slurm' must be an object")
 
-    stage = pick(args.stage, cfg.get("stage")) or "fastp_split"
+    requested = normalize_stage_request(args.stage)
+    if not requested:
+        requested = normalize_stage_request(cfg.get("stage")) or ["fastp_split"]
+    if "all" in requested and requested != ["all"]:
+        raise ValueError("`all` cannot be combined with other --stage names")
+    if requested != ["all"]:
+        unknown = [name for name in requested if name not in ALL_STAGE_NAMES]
+        if unknown:
+            raise ValueError(f"unsupported stage: {unknown[0]}")
+        if len(requested) != len(set(requested)):
+            raise ValueError("duplicate --stage names are not allowed")
+    stage = "all" if requested == ["all"] or len(requested) > 1 else requested[0]
     if stage not in STAGE_CHOICES:
         raise ValueError(f"unsupported stage: {stage}")
 
@@ -1730,10 +1781,16 @@ def resolve_settings(args: argparse.Namespace) -> dict:
         settings["meth_matrix_dense"] = bool(settings.get("meth_matrix_dense"))
 
     settings["_stage_sequence"] = build_stage_sequence(settings)
-    if stage in ("count_mapped_reads", "estimated_cells") and settings["_barcode_mode"] == "gexcb":
-        raise ValueError(
-            f"stage {stage} is not used when gexcb is set; use split_bams with --gexcb"
-        )
+    if settings["_barcode_mode"] == "gexcb":
+        for stage_name in requested:
+            if stage_name in ("count_mapped_reads", "estimated_cells"):
+                raise ValueError(
+                    f"stage {stage_name} is not used when gexcb is set; "
+                    "use split_bams with --gexcb"
+                )
+    settings["_driver_stages"] = resolve_driver_stages(
+        requested, settings["_stage_sequence"]
+    )
     if (
         settings.get("runner") == "slurm"
         and any(key in slurm_cfg_raw for key in SLURM_NEST_STAGE_KEYS)
@@ -1760,11 +1817,8 @@ def resolve_settings(args: argparse.Namespace) -> dict:
         / f"{stage}_%x_%j.err"
     )
 
-    if stage == "all":
-        for stage_name in settings["_stage_sequence"]:
-            validate_required_for_stage(stage_name, settings)
-    else:
-        validate_required_for_stage(stage, settings)
+    for stage_name in settings["_driver_stages"]:
+        validate_required_for_stage(stage_name, settings)
     return settings
 
 
@@ -1826,10 +1880,15 @@ def build_stage_passthrough_args(argv: list[str]) -> list[str]:
     index = 0
     while index < len(argv):
         token = argv[index]
-        if token in {"--stage", "--runner"}:
+        if token == "--stage" or token.startswith("--stage="):
+            index += 1
+            while index < len(argv) and not str(argv[index]).startswith("-"):
+                index += 1
+            continue
+        if token == "--runner":
             index += 2
             continue
-        if token.startswith("--stage=") or token.startswith("--runner="):
+        if token.startswith("--runner="):
             index += 1
             continue
         if token in {"--submit", "--dry-run", "--skip-workdir-input-checks"}:
@@ -2179,7 +2238,7 @@ def main() -> int:
         )
 
     if settings["stage"] == "all":
-        stage_sequence = settings["_stage_sequence"]
+        stage_sequence = settings["_driver_stages"]
         for stage_name in stage_sequence:
             validate_inputs_for_stage(
                 stage_name,
@@ -2218,7 +2277,9 @@ def main() -> int:
             driver_path = command_dir / "run.sh"
             print(f"[make_cmd] script={driver_path}")
             if not settings["dry_run"]:
-                generate_local_driver_script(stage_scripts, driver_path, stage_sequence)
+                generate_local_driver_script(
+                    stage_scripts, driver_path, settings["_stage_sequence"]
+                )
         else:
             driver_path = command_dir / "run.sbatch"
             print(f"[make_cmd] script={driver_path}")
@@ -2241,6 +2302,10 @@ def main() -> int:
                 submit_script(driver_path, settings["runner"])
                 print("[make_cmd] submitted_driver=1")
 
+        print(
+            "[make_cmd] driver_stages="
+            + " ".join(settings["_driver_stages"])
+        )
         print("[make_cmd] stage=all helper generation complete")
         return 0
 

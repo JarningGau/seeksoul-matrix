@@ -16,7 +16,7 @@ seeksoul-matrix/
 ├── whitelist/             # Cell-barcode whitelists (e.g. DD-MET5/U3CB_methylation.txt.gz)
 ├── scripts/               # Stage scripts and workflow driver (make_cmd.py)
 ├── workflow/              # JSON workflow configs
-├── examples/              # Example local and HPC run commands (see run_*_example.sh)
+├── examples/              # Example local and HPC run commands (see run_*_example.sh, run_multi_lane.sh)
 ├── docs/                  # Project documentation and stage contracts
 ├── dbit-matrix/           # Reference template — engineering patterns
 └── SeekSoulMethyl/        # Reference template — SeekSoul official methylation pipeline
@@ -127,7 +127,7 @@ Implemented stages (`scripts/make_cmd.py`; stable I/O in `docs/developers/contra
 
 Per-stage and workflow validation detail: [`docs/developers/status.md`](docs/developers/status.md).
 
-`--stage all` generates per-stage scripts under `work/<sample>/commands/` plus a driver: `run.sh` (local) or `run.sbatch` (Slurm DAG). Analysis chunks are keyed by barcode prefix (`split_fastq_prefix_bases`, default `1`); `number_of_split_parts` controls read-order demux parallelism only. Barcode selection is **mutually exclusive**: `expected_cell_num` (default 3000, methylation-only path: count → estimate → split → merge → allc → saturation → qc_summary) or `gexcb` (RNA barcodes, split → merge → allc → saturation → qc_summary). Optional `force_cell_num` in workflow JSON takes top N barcodes by `aligned_reads` and overrides `expected_cell_num` threshold filtering in `estimated_cells`. Slurm emits per-chunk sbatch files for parallel stages and aggregate jobs for `estimated_cells` / `aggregate_ct_qc`.
+`--stage all` generates per-stage scripts under `work/<sample>/commands/` plus a driver: `run.sh` (local) or `run.sbatch` (Slurm DAG). `--stage` also accepts a contiguous list of pipeline stages (canonical order; gaps are rejected); the driver covers only that range while script prefixes stay numbered from the full sequence. Analysis chunks are keyed by barcode prefix (`split_fastq_prefix_bases`, default `1`); `number_of_split_parts` controls read-order demux parallelism only. Barcode selection is **mutually exclusive**: `expected_cell_num` (default 3000, methylation-only path: count → estimate → split → merge → allc → saturation → qc_summary) or `gexcb` (RNA barcodes, split → merge → allc → saturation → qc_summary). Optional `force_cell_num` in workflow JSON takes top N barcodes by `aligned_reads` and overrides `expected_cell_num` threshold filtering in `estimated_cells`. Slurm emits per-chunk sbatch files for parallel stages and aggregate jobs for `estimated_cells` / `aggregate_ct_qc`. HPC multi-lane: submit each lane with a `--stage` list through `bismark_align`, then `examples/run_multi_lane.sh --phase harvest`; see [`examples/run_slurm_example.sh`](examples/run_slurm_example.sh).
 
 Twelve-stage driver (`fastp_split` → `qc_summary`) with barcode-prefix analysis chunks; optional meth analysis adds up to four stages through `meth_matrix` (`run_meth_analysis`, `run_meth_matrix`). MethSCAn `diff` / `profile` are out of scope. See [`docs/developers/status.md`](docs/developers/status.md) for methylation-only and gexcb validation posture.
 

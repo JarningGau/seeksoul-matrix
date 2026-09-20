@@ -2,6 +2,67 @@
 
 For current reliability, see [`status.md`](status.md). This file is the append-only history.
 
+## 2026-09-20 — multi-stage `--stage` list and harvest
+
+**Task:** Let `make_cmd --stage` take a contiguous stage list so HPC multi-lane submit matches `run_slurm_example.sh`; add `--phase harvest`.
+
+**Files changed:**
+- `scripts/make_cmd.py`
+- `examples/run_multi_lane.sh`
+- `examples/run_slurm_example.sh`
+- `examples/lanes.tsv.example`
+- `AGENTS.md`
+- `docs/developers/status.md`
+- `docs/developers/logs.md`
+
+**Summary:**
+- `--stage` is `nargs="+"`: `all`, one name, or a contiguous pipeline subsequence (sorted to canonical order; gaps rejected).
+- Multi-stage requests reuse the `--stage all` driver (`run.sh` / `run.sbatch`) but iterate `_driver_stages` only. Full-sequence prefixes stay (`05_bam_sort` for a tail subset).
+- `build_stage_passthrough_args` skips every non-flag token after `--stage`.
+- `run_multi_lane.sh --phase harvest` merges lanes that already have unsorted Bismark BAMs (no `make_cmd` align). HPC cookbook in `examples/run_slurm_example.sh` (storage2 paths).
+
+**Checks performed:**
+- `pixi run python scripts/make_cmd.py --help` → `--stage STAGE [STAGE ...]`
+- Slurm dry-run `--stage fastp_split demux_extract_bc regroup_shards bismark_align` → those four stages + `run.sbatch`; no `bam_sort`
+- Slurm dry-run `--stage bam_sort count_mapped_reads estimated_cells` → `05_bam_sort_*`, no fastp
+- `--stage demux_extract_bc bismark_align` → exit 1, missing `regroup_shards`
+- `--stage qc_summary --dry-run`; `pixi run e2e-dry-run`; `pixi run e2e-slurm-dry-run`
+- `bash -n examples/run_multi_lane.sh`; `--help` includes harvest; `--phase harvest --dry-run` skips lanes with no BAMs and does not call align
+
+**Status:** done
+
+**Notes:** Cluster submit of a per-lane Slurm DAG + harvest is not exercised. `dd_met5_slurm.json` production-scale submit still not validated.
+
+## 2026-09-20 — multi-lane disk-aware example queue
+
+**Task:** Add an operator wrapper for many PE FASTQ pairs without changing stage contracts.
+
+**Files changed:**
+- `examples/run_multi_lane.sh`
+- `examples/merge_fastp_json.py`
+- `examples/lanes.tsv.example`
+- `README.md`
+- `AGENTS.md`
+- `docs/developers/status.md`
+- `docs/developers/logs.md`
+
+**Summary:**
+- Example queue processes one lane at a time with existing `make_cmd.py --runner local --submit` through `bismark_align`.
+- Concatenates unsorted Bismark BAMs into `work/<final>/align/` via `samtools cat`, then runs count → qc_summary with explicit intermediate `rm`.
+- Glue only: merge lane `fastp.json` totals and reuse `aggregate_ct_qc.py`. Workflow JSON still accepts a single `r1`/`r2` pair.
+- Operator wrapper is flag-driven (`--manifest`, `--sample-id`, `--skip-missing`, `--delete-raw-fastq`); not environment variables.
+
+**Checks performed:**
+- `bash -n examples/run_multi_lane.sh`
+- `bash examples/run_multi_lane.sh --help`
+- `bash examples/run_multi_lane.sh --manifest examples/lanes.tsv.example --sample-id multi-lane-dry --dry-run --phase all`
+- `bash examples/run_multi_lane.sh --manifest examples/lanes.tsv.example --sample-id multi-lane-skip --skip-missing --dry-run --phase all` (skips tail while 0/2 lanes are merged)
+- `merge_fastp_json.py` on two synthetic reports (summed `total_reads` / `total_bases`)
+
+**Status:** needs_review
+
+**Notes:** Wrapper is not a substitute for native multi-FASTQ workflow support. Peak disk during the last `samtools cat` is still about two copies of the accumulated BAM. Rolling upload: `--skip-missing --delete-raw-fastq` re-runs after each lane lands; tail waits until every manifest row has `.done`. Do not pass `--delete-raw-fastq` unless the lane FASTQs are backed up. Production 20-lane run not exercised. CLI flags replace environment variables (`--manifest`, `--sample-id`, `--phase`, ...).
+
 ## 2026-06-25 — dd_met5_slurm meth analysis config
 
 **Task:** Add MethSCAn pipeline stages to production Slurm workflow JSON.
