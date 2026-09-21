@@ -29,82 +29,82 @@
     "saturation_reads_threshold": 50,
     "slurm": {
         "fastp_split": {
-            "partition": "amd-ep2",
+            "partition": "amd-ep5",
             "mem": "4G",
             "cpus_per_task": 2
         },
         "demux_extract_bc": {
-            "partition": "amd-ep2",
+            "partition": "amd-ep5",
             "mem": "4G",
             "cpus_per_task": 1
         },
         "regroup_shards": {
-            "partition": "amd-ep2",
+            "partition": "amd-ep5",
             "mem": "2G",
             "cpus_per_task": 1
         },
         "bismark_align": {
-            "partition": "amd-ep2",
+            "partition": "amd-ep5",
             "mem": "20G",
             "cpus_per_task": 2
         },
         "bam_sort": {
-            "partition": "amd-ep2",
+            "partition": "amd-ep5",
             "mem": "4G",
             "cpus_per_task": 2
         },
         "count_mapped_reads": {
-            "partition": "amd-ep2",
+            "partition": "amd-ep5",
             "mem": "4G",
             "cpus_per_task": 1
         },
         "estimated_cells": {
-            "partition": "amd-ep2",
+            "partition": "amd-ep5",
             "mem": "2G",
             "cpus_per_task": 1
         },
         "split_bams": {
-            "partition": "amd-ep2",
+            "partition": "amd-ep5",
             "mem": "8G",
             "cpus_per_task": 2
         },
         "merge_fr_bams": {
-            "partition": "amd-ep2",
+            "partition": "amd-ep5",
             "mem": "4G",
             "cpus_per_task": 2
         },
         "bam_to_allc": {
-            "partition": "amd-ep2",
+            "partition": "amd-ep5",
             "mem": "8G",
             "cpus_per_task": 2
         },
         "saturation": {
-            "partition": "amd-ep2",
+            "partition": "amd-ep5",
             "mem": "4G",
             "cpus_per_task": 1
         },
         "qc_summary": {
-            "partition": "amd-ep2",
+            "partition": "amd-ep5",
             "mem": "2G",
             "cpus_per_task": 1
         },
         "allc_to_matrix": {
-            "partition": "amd-ep2",
+            "partition": "amd-ep5",
             "mem": "16G",
             "cpus_per_task": 4
         },
         "meth_smooth": {
-            "partition": "amd-ep2",
+            "partition": "amd-ep5",
             "mem": "16G",
             "cpus_per_task": 4
         },
         "meth_scan": {
-            "partition": "amd-ep2",
+            "partition": "amd-ep5",
             "mem": "16G",
             "cpus_per_task": 8
         },
         "meth_matrix": {
-            "partition": "amd-ep2",
+            "partition": "amd-ep5",
             "mem": "16G",
             "cpus_per_task": 8
         }
