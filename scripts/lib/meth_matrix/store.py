@@ -1,31 +1,100 @@
-"""COO chunking and CSR matrix store for per-cell methylation data."""
+"""Per-cell ALLC assembly into a CSR matrix store."""
 
 from __future__ import annotations
 
 import json
+import multiprocessing as mp
 from collections.abc import Sequence
 from datetime import datetime, timezone
-from glob import glob
 from pathlib import Path
 
 import numpy as np
 import pandas as pd
 import scipy.sparse as sp_sparse
-from numba import njit
 
-from .allc import iter_allc_sites
+from .allc import read_cell_sites
 
 
-@njit
-def _process_chunk(positions, indptr, last_pos, indptr_counter, indptr_i):
-    for pos in positions:
-        if pos > last_pos:
-            for _ in range(pos - last_pos):
-                indptr[indptr_i] = indptr_counter
-                indptr_i += 1
-            last_pos = pos
-        indptr_counter += 1
-    return last_pos, indptr_counter, indptr_i
+def _read_cell_worker(
+    task: tuple[str, str, bool, tuple[str, ...], bool],
+) -> dict[str, tuple[np.ndarray, np.ndarray]]:
+    allc_path, meth_context, round_sites, exclude_contigs, main_chroms_only = task
+    return read_cell_sites(
+        Path(allc_path),
+        meth_context=meth_context,
+        round_sites=round_sites,
+        exclude_contigs=set(exclude_contigs),
+        main_chroms_only=main_chroms_only,
+    )
+
+
+def _iter_cell_sites(
+    tasks: Sequence[tuple[str, str, bool, tuple[str, ...], bool]],
+    *,
+    threads: int,
+):
+    n_cells = len(tasks)
+    if threads == 1 or n_cells <= 1:
+        for cell_n, task in enumerate(tasks):
+            if cell_n % 50 == 0:
+                print(
+                    f"[allc_to_matrix] progress={100 * cell_n / n_cells:.2f}% "
+                    f"cell_index={cell_n}/{n_cells}"
+                )
+            yield _read_cell_worker(task)
+        return
+
+    ctx = mp.get_context("fork")
+    with ctx.Pool(processes=min(threads, n_cells)) as pool:
+        for cell_n, cell_sites in enumerate(
+            pool.imap(_read_cell_worker, tasks, chunksize=1)
+        ):
+            if cell_n % 50 == 0:
+                print(
+                    f"[allc_to_matrix] progress={100 * cell_n / n_cells:.2f}% "
+                    f"cell_index={cell_n}/{n_cells}"
+                )
+            yield cell_sites
+
+
+def _csr_from_cells(
+    cell_results: Sequence[dict[str, tuple[np.ndarray, np.ndarray]]],
+    chrom: str,
+    chrom_size: int,
+    n_cells: int,
+) -> sp_sparse.csr_matrix:
+    """Build one chromosome CSR via CSC (columns = cells) then ``tocsr``."""
+    counts = np.zeros(n_cells, dtype=np.int64)
+    pos_chunks: list[np.ndarray] = []
+    val_chunks: list[np.ndarray] = []
+    for cell_i, cell_sites in enumerate(cell_results):
+        packed = cell_sites.get(chrom)
+        if packed is None:
+            continue
+        pos, val = packed
+        if pos.size == 0:
+            continue
+        counts[cell_i] = pos.size
+        pos_chunks.append(pos)
+        val_chunks.append(val)
+    indptr = np.empty(n_cells + 1, dtype=np.int64)
+    indptr[0] = 0
+    np.cumsum(counts, out=indptr[1:])
+    if pos_chunks:
+        indices = np.concatenate(pos_chunks)
+        data = np.concatenate(val_chunks)
+    else:
+        indices = np.array([], dtype=np.int64)
+        data = np.array([], dtype=np.int8)
+    csc = sp_sparse.csc_matrix(
+        (data, indices, indptr),
+        shape=(chrom_size + 1, n_cells),
+        dtype=np.int8,
+    )
+    csr = csc.tocsr()
+    if csr.data.dtype != np.int8:
+        csr = csr.astype(np.int8)
+    return csr
 
 
 def build_matrix_store(
@@ -38,49 +107,41 @@ def build_matrix_store(
     round_sites: bool = False,
     exclude_contigs: set[str] | None = None,
     main_chroms_only: bool = False,
+    threads: int = 1,
     run_info_extra: dict | None = None,
 ) -> dict[str, Path]:
-    """Build CSR store from per-cell ALLC files; return output paths."""
+    """Build CSR store from per-cell ALLC files; return output paths.
+
+    ``chunksize`` is accepted for CLI compatibility and written to
+    ``run_info.json``. It does not affect the matrix.
+    """
     if len(allc_paths) != len(cell_names):
         raise ValueError("allc_paths and cell_names length mismatch")
     if not allc_paths:
         raise ValueError("no ALLC inputs provided")
+    if threads < 1:
+        raise ValueError("threads must be >= 1")
 
     output_dir.mkdir(parents=True, exist_ok=True)
     begin_time = datetime.now(timezone.utc)
     n_cells = len(cell_names)
-    cell_index = {name: index for index, name in enumerate(cell_names)}
+    exclude_key = tuple(sorted(exclude_contigs or []))
+    tasks = [
+        (str(path), meth_context, round_sites, exclude_key, main_chroms_only)
+        for path in allc_paths
+    ]
+    cell_results = list(_iter_cell_sites(tasks, threads=threads))
+    print("[allc_to_matrix] progress=100.00% cell_read_done=1")
 
-    coo_handles: dict[tuple[str, int], object] = {}
     chrom_sizes: dict[str, int] = {}
-
-    for cell_n, allc_path in enumerate(allc_paths):
-        if cell_n % 50 == 0:
-            print(
-                f"[allc_to_matrix] progress={100 * cell_n / n_cells:.2f}% "
-                f"cell_index={cell_n}/{n_cells}"
-            )
-        for chrom, genomic_pos, meth_value in iter_allc_sites(
-            allc_path,
-            meth_context=meth_context,
-            round_sites=round_sites,
-            exclude_contigs=exclude_contigs,
-            main_chroms_only=main_chroms_only,
-        ):
-            chrom_chunk = int(genomic_pos // chunksize)
-            coo_key = (chrom, chrom_chunk)
-            if coo_key not in coo_handles:
-                coo_path = output_dir / f"{chrom}_chunk{chrom_chunk:07}.coo"
-                coo_handles[coo_key] = coo_path.open("w", encoding="utf-8")
-                chrom_sizes.setdefault(chrom, 0)
-            if genomic_pos > chrom_sizes[chrom]:
-                chrom_sizes[chrom] = genomic_pos
-            coo_handles[coo_key].write(f"{genomic_pos},{cell_n},{meth_value}\n")
-
-    for handle in coo_handles.values():
-        handle.close()
-
-    print("[allc_to_matrix] progress=100.00% coo_dump_done=1")
+    for cell_sites in cell_results:
+        for chrom, (pos, _val) in cell_sites.items():
+            if pos.size == 0:
+                continue
+            peak = int(pos.max())
+            previous = chrom_sizes.get(chrom)
+            if previous is None or peak > previous:
+                chrom_sizes[chrom] = peak
 
     n_obs_cell = np.zeros(n_cells, dtype=np.int64)
     n_meth_cell = np.zeros(n_cells, dtype=np.int64)
@@ -90,12 +151,11 @@ def build_matrix_store(
             f"[allc_to_matrix] csr_chrom={chrom} rows={chrom_size + 1} "
             f"cols={n_cells}"
         )
-        mat = _load_csr_from_coo(output_dir, chrom, chrom_size, n_cells)
+        mat = _csr_from_cells(cell_results, chrom, chrom_size, n_cells)
         n_obs_cell += np.asarray(mat.getnnz(axis=0)).ravel()
         n_meth_cell += np.ravel(np.sum(mat > 0, axis=0))
         mat_path = output_dir / f"{chrom}.npz"
         sp_sparse.save_npz(mat_path, mat)
-        _delete_coo_chunks(output_dir, chrom)
 
     colname_path = _write_column_names(output_dir, cell_names)
     stats_path = _write_summary_stats(output_dir, cell_names, n_obs_cell, n_meth_cell)
@@ -107,6 +167,7 @@ def build_matrix_store(
         round_sites=round_sites,
         exclude_contigs=sorted(exclude_contigs or []),
         main_chroms_only=main_chroms_only,
+        threads=threads,
         cell_names=list(cell_names),
         allc_paths=[str(path) for path in allc_paths],
         chromosomes=sorted(chrom_sizes.keys()),
@@ -119,46 +180,6 @@ def build_matrix_store(
         "cell_stats": stats_path,
         "run_info": info_path,
     }
-
-
-def _iter_chunks(data_dir: Path, chrom: str):
-    chunk_paths = sorted(glob(str(data_dir / f"{chrom}_chunk*.coo")))
-    for chunk_path in chunk_paths:
-        print(f"[allc_to_matrix] coo_chunk={Path(chunk_path).name}")
-        chunk = pd.read_csv(chunk_path, delimiter=",", header=None).values
-        yield chunk
-
-
-def _delete_coo_chunks(data_dir: Path, chrom: str) -> None:
-    for chunk_path in glob(str(data_dir / f"{chrom}_chunk*.coo")):
-        Path(chunk_path).unlink(missing_ok=True)
-
-
-def _load_csr_from_coo(
-    data_dir: Path, chrom: str, chrom_size: int, n_cells: int
-) -> sp_sparse.csr_matrix:
-    data_chunks: list[np.ndarray] = []
-    indices_chunks: list[np.ndarray] = []
-    indptr = np.empty(chrom_size + 2, dtype=np.int64)
-
-    last_pos = -1
-    indptr_counter = 0
-    indptr_i = 0
-    for chunk in _iter_chunks(data_dir, chrom):
-        sorting_idx = np.lexsort((chunk[:, 1], chunk[:, 0]))
-        last_pos, indptr_counter, indptr_i = _process_chunk(
-            chunk[sorting_idx, 0], indptr, last_pos, indptr_counter, indptr_i
-        )
-        data_chunks.append(chunk[sorting_idx, 2].astype(np.int8))
-        indices_chunks.append(chunk[sorting_idx, 1].astype(np.int64))
-    indptr[indptr_i] = indptr_counter
-    data = np.concatenate(data_chunks) if data_chunks else np.array([], dtype=np.int8)
-    indices = (
-        np.concatenate(indices_chunks) if indices_chunks else np.array([], dtype=np.int64)
-    )
-    return sp_sparse.csr_matrix(
-        (data, indices, indptr), shape=(chrom_size + 1, n_cells)
-    )
 
 
 def _write_column_names(output_dir: Path, cell_names: Sequence[str]) -> Path:

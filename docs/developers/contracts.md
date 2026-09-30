@@ -337,6 +337,7 @@ Workflow keys (when enabled via `run_meth_analysis`):
 | `meth_round_sites` | `false` |
 | `meth_main_chroms_only` | `false` |
 | `meth_exclude_contigs` | `""` |
+| `meth_matrix_cores` | `8` |
 
 Outputs under `work/<sample>/meth/matrix/`:
 
@@ -351,7 +352,8 @@ Contract:
 
 - Single sample-level job; globs ALLC across analysis chunks; rejects duplicate barcodes across chunks.
 - Optional post-`qc_summary` stage; gated by workflow key `run_meth_analysis` (default `false`).
-- MethSCAn `prepare` parity validated on `work/dd-met5-example` (50 cells, all-context comparison passed).
+- `meth_matrix_cores` is the per-cell ALLC reader process count (`--threads`). `meth_chunksize` is recorded in `run_info.json` and does not change outputs.
+- MethSCAn `prepare` parity validated on `work/dd-met5-example` (50 cells, all-context comparison passed). CSR values stay on that same encoding.
 
 See also: [stage notes](stage_notes/allc_to_matrix.md) · [chunk model](chunk_model.md)
 

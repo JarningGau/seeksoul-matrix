@@ -173,7 +173,7 @@ MethSCAn is **GPL-3.0-or-later**. This spec assumes a **clean-room reimplementat
 
 Use `MethSCAn/methscan/*.py` as a behavioral spec; reimplement in `scripts/lib/meth_matrix/`.
 
-- [x] **ALLC → COO chunks → CSR** (`prepare.py`): chromosome chunking (`chunksize`, default 10 Mbp), COO temp files, CSR `indptr` construction, `int8` data values.
+- [x] **ALLC → CSR** (`prepare.py`): `int8` data values (`+1` / `-1`). The seeksoul-matrix stage reads cells in parallel and builds each chromosome with CSC→CSR. `meth_chunksize` is kept in `run_info.json` and does not change outputs. CSR contents match the previous COO-chunk implementation.
 - [x] **Cell stats** (`cell_stats.csv`): `n_obs`, `n_meth`, `global_meth_frac` per cell.
 - [x] **Filter** (`filter.py`): **skipped** — cell selection in `allc_to_matrix` via `filtered_barcode`.
 - [x] **Smooth** (`smooth.py`): tricube kernel, bandwidth default 1000 bp, optional `log1p(coverage)` weights.

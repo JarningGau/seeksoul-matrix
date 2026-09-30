@@ -395,7 +395,11 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument(
         "--meth-chunksize",
         type=int,
-        help=f"COO chunk size for allc_to_matrix. Default: {DEFAULT_METH_CHUNKSIZE}.",
+        help=(
+            "Recorded in allc_to_matrix run_info.json. "
+            f"Default: {DEFAULT_METH_CHUNKSIZE}. "
+            "Retained for compatibility; it does not change runtime."
+        ),
     )
     parser.add_argument(
         "--meth-round-sites",
@@ -466,7 +470,10 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument(
         "--meth-matrix-cores",
         type=int,
-        help=f"CPU threads for meth_scan and meth_matrix. Default: {DEFAULT_METH_MATRIX_CORES}.",
+        help=(
+            "CPU workers for allc_to_matrix, meth_scan, and meth_matrix. "
+            f"Default: {DEFAULT_METH_MATRIX_CORES}."
+        ),
     )
     parser.add_argument(
         "--run-meth-matrix",
@@ -854,6 +861,8 @@ def build_allc_to_matrix_command(
         str(args.meth_context),
         "--chunksize",
         str(args.meth_chunksize),
+        "--threads",
+        str(args.meth_matrix_cores),
     ]
     if args.meth_round_sites:
         command.append("--round-sites")
@@ -2981,6 +2990,7 @@ def main() -> int:
             meth_round_sites=settings["meth_round_sites"],
             meth_main_chroms_only=settings["meth_main_chroms_only"],
             meth_exclude_contigs=settings["meth_exclude_contigs"],
+            meth_matrix_cores=settings["meth_matrix_cores"],
         )
         command = build_allc_to_matrix_command(
             command_args,

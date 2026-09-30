@@ -59,7 +59,16 @@ def parse_args() -> argparse.Namespace:
         "--chunksize",
         type=int,
         default=DEFAULT_CHUNKSIZE,
-        help="Chromosome chunk size in bp for COO temp files. Default: 10000000.",
+        help=(
+            "Recorded in run_info.json. Default: 10000000. "
+            "Retained for compatibility; it does not change the matrix or runtime."
+        ),
+    )
+    parser.add_argument(
+        "--threads",
+        type=int,
+        default=1,
+        help="Worker processes for per-cell ALLC reads. Default: 1.",
     )
     parser.add_argument(
         "--round-sites",
@@ -186,6 +195,8 @@ def main() -> int:
     args = parse_args()
     if args.chunksize <= 0:
         raise ValueError("--chunksize must be > 0")
+    if args.threads < 1:
+        raise ValueError("--threads must be >= 1")
 
     work_path = Path(args.work_path) if args.work_path else None
     allc_dir = Path(args.allc_dir) if args.allc_dir else None
@@ -231,6 +242,7 @@ def main() -> int:
     print(f"[allc_to_matrix] barcode_source={barcode_source}")
     print(f"[allc_to_matrix] meth_context={args.meth_context}")
     print(f"[allc_to_matrix] chunksize={args.chunksize}")
+    print(f"[allc_to_matrix] threads={args.threads}")
     print(f"[allc_to_matrix] round_sites={int(args.round_sites)}")
     print(f"[allc_to_matrix] main_chroms_only={int(args.main_chroms_only)}")
     print(f"[allc_to_matrix] exclude_contigs={sorted(exclude_contigs)}")
@@ -253,6 +265,7 @@ def main() -> int:
         round_sites=args.round_sites,
         exclude_contigs=exclude_contigs,
         main_chroms_only=args.main_chroms_only,
+        threads=args.threads,
         run_info_extra={
             "gather_mode": gather_mode,
             "barcode_source": barcode_source,

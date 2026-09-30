@@ -2,6 +2,41 @@
 
 For current reliability, see [`status.md`](status.md). This file is the append-only history.
 
+## 2026-09-30 — speed up allc_to_matrix
+
+**Task:** Read per-cell ALLC in parallel and build CSR without text COO chunks.
+
+**Files changed:**
+- `scripts/lib/meth_matrix/allc.py`
+- `scripts/lib/meth_matrix/store.py`
+- `scripts/allc_to_matrix.py`
+- `scripts/make_cmd.py`
+- `pixi.toml`
+- `workflow/dd_met5_slurm_large.json`
+- `docs/developers/stage_notes/allc_to_matrix.md`
+- `docs/developers/contracts.md`
+- `docs/developers/status.md`
+- `docs/developers/logs.md`
+- `docs/methscan_builtin_spec.md`
+
+**Summary:**
+- Byte prefilter on the context prefix, then the existing `context_matches` check.
+- Process pool (`--threads`, workflow key `meth_matrix_cores`) returns per-chromosome arrays. Each chromosome is CSC→CSR. No temporary `.coo` files and no numba `indptr` loop.
+- `meth_chunksize` is still recorded in `run_info.json` and does not change the matrix.
+- `dd_met5_slurm_large.json` sets `allc_to_matrix` `cpus_per_task` to 16, matching `meth_matrix_cores`.
+- `meth-allc-to-matrix-dry-run` passes `--run-meth-analysis` so the stage is in the pipeline sequence.
+
+**Checks performed:**
+- 60-cell CG vs the previous COO output (`/tmp/mat60`): 54 chromosomes, `indptr` / `indices` / `data`, `column_header.txt`, and `cell_stats.csv` match. `--threads 1` (144.4 s) matches `--threads 8` (52.8 s).
+- Previous implementation vs new, 2 cells: `meth_context=all` (43 chromosomes) and `round_sites` + `main_chroms_only` + exclude `chrM` (21 chromosomes) match.
+- `work/C283_Brain_DNAme_S1`, 300 cells, CG: 613 s baseline → 134.4 s at 8 workers, 112.1 s at 16 workers. 8-worker and 16-worker signatures match (56 chromosomes).
+- `make_cmd.py --version`, `allc_to_matrix.py --help` and `--dry-run` (prints `threads`).
+- `pixi run meth-allc-to-matrix-dry-run` emits `--threads 8`. `meth-e2e-dry-run` and `e2e-slurm-dry-run` succeed. Large Slurm dry-run emits `--threads 16`.
+
+**Status:** done
+
+**Notes:** The MethSCAn `prepare` golden from 2026-06-25 is not in the repo, so this change was checked against the previous implementation rather than a fresh MethSCAn run. CSR assembly is still one chromosome at a time, which caps the gain from 8 to 16 workers. No spill-to-disk path: `meth_context=all` at a few hundred cells is on the order of 8 GB of site arrays before the CSR `indptr`. Slurm meth path is still not cluster-tested.
+
 ## 2026-09-20 — multi-stage `--stage` list and harvest
 
 **Task:** Let `make_cmd --stage` take a contiguous stage list so HPC multi-lane submit matches `run_slurm_example.sh`; add `--phase harvest`.

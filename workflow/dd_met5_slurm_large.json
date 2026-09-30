@@ -1,0 +1,129 @@
+{
+    "runner": "slurm",
+    "stage": "fastp_split",
+    "sample_id": "dd-met5-example",
+    "r1": "data/test_R1.fastq.gz",
+    "r2": "data/test_R2.fastq.gz",
+    "work_root": "work",
+    "fastp_threads": 8,
+    "number_of_split_parts": 8,
+    "split_fastq_prefix_bases": 2,
+    "fastp_bin": "fastp",
+    "barcode_whitelist": "whitelist/DD-MET5/U3CB_methylation.txt.gz",
+    "barcode_hamming_distance": 1,
+    "gzip_level": 1,
+    "filter_ch": 2,
+    "bismark_ref": "/mnt/wd-4t/resource/mouse-reference-GRCm39/fasta/",
+    "bismark_parallel": 16,
+    "bismark_max_insert": 1000,
+    "bismark_bin": "bismark",
+    "sort_threads": 8,
+    "samtools_bin": "samtools",
+    "expected_cell_num": 10,
+    "split_bams_cores": 16,
+    "merge_fr_bams_cores": 16,
+    "genome_fa": "/mnt/wd-4t/resource/mouse-reference-GRCm39/fasta/genome.fa",
+    "chrom_size_path": "/mnt/wd-4t/resource/mouse-reference-GRCm39/bed/chr_nochrM.bed",
+    "bam_to_allc_cores": 16,
+    "allcools_tag": "UR",
+    "saturation_reads_threshold": 50,
+    "slurm": {
+        "fastp_split": {
+            "partition": "amd-ep5",
+            "mem": "8G",
+            "cpus_per_task": 8
+        },
+        "demux_extract_bc": {
+            "partition": "amd-ep5",
+            "mem": "32G",
+            "cpus_per_task": 1
+        },
+        "regroup_shards": {
+            "partition": "amd-ep5",
+            "mem": "8G",
+            "cpus_per_task": 1
+        },
+        "bismark_align": {
+            "partition": "amd-ep5",
+            "mem": "120G",
+            "cpus_per_task": 16
+        },
+        "bam_sort": {
+            "partition": "amd-ep5",
+            "mem": "12G",
+            "cpus_per_task": 8
+        },
+        "count_mapped_reads": {
+            "partition": "amd-ep5",
+            "mem": "16G",
+            "cpus_per_task": 1
+        },
+        "estimated_cells": {
+            "partition": "amd-ep5",
+            "mem": "8G",
+            "cpus_per_task": 1
+        },
+        "split_bams": {
+            "partition": "amd-ep5",
+            "mem": "4G",
+            "cpus_per_task": 16
+        },
+        "merge_fr_bams": {
+            "partition": "amd-ep5",
+            "mem": "4G",
+            "cpus_per_task": 16
+        },
+        "bam_to_allc": {
+            "partition": "amd-ep5",
+            "mem": "16G",
+            "cpus_per_task": 16
+        },
+        "saturation": {
+            "partition": "amd-ep5",
+            "mem": "200G",
+            "cpus_per_task": 1
+        },
+        "qc_summary": {
+            "partition": "amd-ep5",
+            "mem": "2G",
+            "cpus_per_task": 1
+        },
+        "allc_to_matrix": {
+            "partition": "amd-ep5",
+            "mem": "64G",
+            "cpus_per_task": 16
+        },
+        "meth_smooth": {
+            "partition": "amd-ep5",
+            "mem": "16G",
+            "cpus_per_task": 8
+        },
+        "meth_scan": {
+            "partition": "amd-ep5",
+            "mem": "4G",
+            "cpus_per_task": 16
+        },
+        "meth_matrix": {
+            "partition": "amd-ep5",
+            "mem": "4G",
+            "cpus_per_task": 16
+        }
+    },
+    "run_meth_analysis": true,
+    "run_meth_matrix": true,
+    "meth_context": "CG",
+    "meth_chunksize": 10000000,
+    "meth_round_sites": true,
+    "meth_main_chroms_only": true,
+    "meth_exclude_contigs": "",
+    "meth_smooth_bandwidth": 1000,
+    "meth_scan_bandwidth": 2000,
+    "meth_scan_stepsize": 100,
+    "meth_scan_var_threshold": 0.02,
+    "meth_scan_min_cells": 10,
+    "meth_scan_bridge_gaps": 0,
+    "meth_matrix_cores": 16,
+    "meth_regions_bed": "",
+    "meth_regions_label": "",
+    "meth_matrix_dense": false
+}
