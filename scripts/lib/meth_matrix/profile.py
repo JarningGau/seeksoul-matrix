@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import csv
+import gzip
 import json
 import os
 from datetime import datetime, timezone
@@ -198,7 +199,7 @@ def _write_profile_csv(
     if label:
         header.append("label")
     path.parent.mkdir(parents=True, exist_ok=True)
-    with path.open("w", encoding="utf-8", newline="") as handle:
+    with gzip.open(path, "wt", encoding="utf-8", newline="") as handle:
         writer = csv.writer(handle)
         writer.writerow(header)
         for cell_i, pos_i in zip(cell_idx.tolist(), pos_idx.tolist()):
@@ -331,7 +332,7 @@ def build_profile(
         )
 
     output_dir.mkdir(parents=True, exist_ok=True)
-    profile_path = output_dir / "profile.csv"
+    profile_path = output_dir / "profile.csv.gz"
     print(f"[meth_profile] writing {profile_path}")
     n_rows = _write_profile_csv(
         profile_path,

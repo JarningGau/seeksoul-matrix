@@ -496,7 +496,7 @@ Outputs under `work/<sample>/meth/profile/<label>/`:
 
 | Path | Description |
 |------|-------------|
-| `profile.csv` | long table: `position`, `cell_name`, `meth_frac`, `n_meth`, `n_total`; optional `label` column when the stage script `--label` is set |
+| `profile.csv.gz` | gzip-compressed long table: `position`, `cell_name`, `meth_frac`, `n_meth`, `n_total`; optional `label` column when the stage script `--label` is set |
 | `run_info.json` | BED path, width, strand column, region counts, row count, runtime |
 
 Contract:

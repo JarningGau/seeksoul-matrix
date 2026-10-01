@@ -4,7 +4,7 @@ Implementation notes for [`meth_profile`](../contracts.md#meth_profile). Not nor
 
 ## Behavior
 
-Clean-room port of MethSCAn `profile`: average per-cell methylation around BED features. The stage writes a long CSV. It does not plot.
+Clean-room port of MethSCAn `profile`: average per-cell methylation around BED features. The stage writes a gzip-compressed long CSV (`profile.csv.gz`). It does not plot.
 
 1. Read `column_header.txt` and the user BED (`--regions-bed` / `meth_profile_bed`). There is no `vmrs.bed` fallback.
 2. For each region, center `c = (start + end) // 2` and take `width` bp starting at `c - width // 2`. Shorter features are extended; longer features are cut.

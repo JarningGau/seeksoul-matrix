@@ -2,6 +2,23 @@
 
 For current reliability, see [`status.md`](status.md). This file is the append-only history.
 
+## 2026-10-01 — meth_profile writes `profile.csv.gz`
+
+**Files changed:**
+- `scripts/lib/meth_matrix/profile.py`, `scripts/meth_profile.py`
+- `docs/developers/contracts.md`, `docs/developers/stage_notes/meth_profile.md`, `docs/methscan_builtin_spec.md`
+
+**Summary:**
+- Output renamed `profile.csv` → `profile.csv.gz` (gzip text, same columns). `build_profile` still returns the path under key `profile_csv`. Contract updated; old `profile.csv` from earlier runs is not removed.
+
+**Checks performed:**
+- Direct `meth_profile.py` on `work/dd-met5-example` (22 cells, chr2, width 400): valid gzip; header and data row readable with `zcat`. Empty-window case yields header-only gzip.
+- `pixi run meth-profile-dry-run`
+
+**Status:** done
+
+**Notes:** Downstream readers of `profile.csv` (none in repo) must use the new name.
+
 ## 2026-10-01 — clearer error for disabled meth stages in `make_cmd.py`
 
 **Files changed:**

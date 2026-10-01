@@ -68,7 +68,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument(
         "--label",
         default=None,
-        help="Optional constant column added to the output CSV.",
+        help="Optional constant column added to the output profile.csv.gz.",
     )
     parser.add_argument(
         "--threads",
@@ -135,7 +135,7 @@ def main() -> int:
     print(f"[meth_profile] regions_bed={regions_bed}")
     print(f"[meth_profile] output_dir={output_dir}")
     print(f"[meth_profile] regions_label={label}")
-    print(f"[meth_profile] profile_csv={output_dir / 'profile.csv'}")
+    print(f"[meth_profile] profile_csv={output_dir / 'profile.csv.gz'}")
     print(f"[meth_profile] width={args.width}")
     print(f"[meth_profile] strand_column={args.strand_column}")
     print(f"[meth_profile] label={column_label}")

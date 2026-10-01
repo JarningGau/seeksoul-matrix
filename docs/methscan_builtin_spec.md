@@ -132,7 +132,7 @@ Under `work/<sample>/meth/`:
 | `vmr/vmrs.bed` | `meth_scan` | VMR intervals |
 | `regions/<label>/` | `meth_matrix` | **sparse default:** `matrix.mtx.gz`, `features.tsv.gz`, `barcodes.tsv.gz`; **dense optional:** four `.csv.gz` count/fraction tables |
 | `dmr/` | — | not planned (`meth_diff` out of scope) |
-| `profile/<label>/` | `meth_profile` | `profile.csv` (`position`, `cell_name`, `meth_frac`, `n_meth`, `n_total`) and `run_info.json` |
+| `profile/<label>/` | `meth_profile` | `profile.csv.gz` (`position`, `cell_name`, `meth_frac`, `n_meth`, `n_total`) and `run_info.json` |
 
 Use `matrix/` as the active store; downstream stages take `--data-dir` pointing at `meth/matrix/` when overriding. Exact paths are normative in `contracts.md`.
 
