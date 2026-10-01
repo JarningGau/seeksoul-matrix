@@ -100,12 +100,12 @@
         },
         "meth_scan": {
             "partition": "amd-ep5",
-            "mem": "4G",
+            "mem": "64G",
             "cpus_per_task": 16
         },
         "meth_matrix": {
             "partition": "amd-ep5",
-            "mem": "4G",
+            "mem": "64G",
             "cpus_per_task": 16
         }
     },
