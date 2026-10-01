@@ -1,7 +1,7 @@
 # MethSCAn-native analysis — implementation spec
 
-**Status:** Phase 2 complete — `meth_matrix` implemented (sparse default); `meth_matrix_filter` skipped by design. Phase 3 (`meth_diff` / `meth_profile`) **not planned** (out of scope).  
-**Last updated:** 2026-06-25
+**Status:** `meth_profile` implemented (user BED, long CSV). `meth_diff` remains out of scope. `meth_matrix_filter` skipped by design.  
+**Last updated:** 2026-10-01
 
 ## Summary
 
@@ -21,7 +21,7 @@ When this work ships, update [`docs/developers/contracts.md`](developers/contrac
 | **No foreign input formats** | Single reader: gzipped ALLC from `bam_to_allc` (`<barcode>_allc.gz`). No Bismark `.cov` path. |
 | **Pipeline-native I/O** | Inputs from [`contracts.md`](developers/contracts.md) (`allcools/`, `cells/`, optional `summary/`); outputs under a new `work/<sample>/meth/` tree. |
 | **Thin stage scripts** | One script per logical step; JSON workflow keys; `make_cmd.py` driver; `--dry-run` on every stage. |
-| **Method fidelity** | VMR scan, region matrix, smoothing, and (later) DMR/profile behavior should match MethSCAn defaults unless explicitly documented. |
+| **Method fidelity** | VMR scan, region matrix, smoothing, and profile behavior should match MethSCAn defaults unless explicitly documented. DMR (`meth_diff`) is out of scope. |
 | **Cite MethSCAn** | Document Kremer et al., *Nature Methods* 2024 ([doi:10.1038/s41592-024-02347-x](https://doi.org/10.1038/s41592-024-02347-x)) in user-facing docs and optional `--cite` on analysis scripts. |
 
 ## Non-goals (initial phases)
@@ -106,11 +106,12 @@ meth_smooth        # pseudobulk smoothing
 meth_scan          # VMRs (requires smooth)
      ↓
 meth_matrix        # region matrix (sparse default; needs BED)
+meth_profile       # per-cell profile around a user BED (optional)
 ```
 
 `meth_matrix_filter` is **not** implemented — `allc_to_matrix` already applies `cells/filtered_barcode` (equivalent to MethSCAn `filter --cell-names`).
 
-**Out of scope (not planned):** `meth_diff`, `meth_profile` — MethSCAn DMR/profile stages; project meth analysis ends at `meth_matrix`.
+**Out of scope (not planned):** `meth_diff` — MethSCAn DMR stage. `meth_profile` is optional and gated by `run_meth_profile`.
 
 Default workflow extension (not enabled until validated):
 
@@ -118,7 +119,7 @@ Default workflow extension (not enabled until validated):
 … → qc_summary → allc_to_matrix → meth_smooth → meth_scan
 ```
 
-`meth_matrix` is on-demand or workflow-flagged (`run_meth_matrix: true`, optional `meth_regions_bed`).
+`meth_matrix` is on-demand or workflow-flagged (`run_meth_matrix: true`, optional `meth_regions_bed`). `meth_profile` is separately flagged (`run_meth_profile: true`, required `meth_profile_bed`) and does not need smoothed matrices.
 
 ### Output layout (draft contract)
 
@@ -131,7 +132,7 @@ Under `work/<sample>/meth/`:
 | `vmr/vmrs.bed` | `meth_scan` | VMR intervals |
 | `regions/<label>/` | `meth_matrix` | **sparse default:** `matrix.mtx.gz`, `features.tsv.gz`, `barcodes.tsv.gz`; **dense optional:** four `.csv.gz` count/fraction tables |
 | `dmr/` | — | not planned (`meth_diff` out of scope) |
-| `profile/` | — | not planned (`meth_profile` out of scope) |
+| `profile/<label>/` | `meth_profile` | `profile.csv` (`position`, `cell_name`, `meth_frac`, `n_meth`, `n_total`) and `run_info.json` |
 
 Use `matrix/` as the active store; downstream stages take `--data-dir` pointing at `meth/matrix/` when overriding. Exact paths are normative in `contracts.md`.
 
@@ -145,6 +146,7 @@ scripts/
   meth_smooth.py
   meth_scan.py
   meth_matrix.py
+  meth_profile.py
   lib/
     meth_matrix/        # shared: allc_reader, csr_build, smooth, scan, numerics
       __init__.py
@@ -181,7 +183,7 @@ Use `MethSCAn/methscan/*.py` as a behavioral spec; reimplement in `scripts/lib/m
 - [x] **Scan** (`scan.py`): sliding window (default bw 2000, step 100), variance threshold (default 0.02), `min_cells` (default 6), optional `bridge_gaps`, parallel over chromosomes.
 - [x] **Matrix** (`matrix.py`): per-region counts / fractions / mean shrunken residuals; **sparse default** (`matrix.mtx.gz`); dense four-table mode via `--dense`.
 - [x] **Diff** (`diff.py`) — **out of scope**; not planned.
-- [x] **Profile** (`profile.py`) — **out of scope**; not planned.
+- [x] **Profile** (`profile.py`) — `scripts/lib/meth_matrix/profile.py` / `scripts/meth_profile.py`. User BED, width default 4000, optional strand column, long CSV. No MethSCAn package call. Numeric check is an independent numpy accumulation on the same CSR store (recorded in `logs.md`), not a MethSCAn CLI golden.
 
 Document any intentional numeric deviations from MethSCAn in stage notes.
 
@@ -215,10 +217,16 @@ Document any intentional numeric deviations from MethSCAn in stage notes.
 | `meth_regions_bed` | `""` | explicit BED; fallback `meth/vmr/vmrs.bed` |
 | `meth_regions_label` | `""` | output label under `meth/regions/` |
 | `meth_matrix_dense` | `false` | dense four-table output when `true` |
+| `run_meth_profile` | `false` | append `meth_profile` after `meth_matrix` when that stage is on |
+| `meth_profile_bed` | `""` | required feature BED for `meth_profile` |
+| `meth_profile_label` | `""` | output label under `meth/profile/` |
+| `meth_profile_width` | `4000` | profile width in bp |
+| `meth_profile_strand_column` | unset | 1-indexed BED strand column |
 
 - [x] Pixi dry-run: `meth-allc-to-matrix-dry-run`
 - [x] Pixi dry-run: `meth-matrix-dry-run`
-- [x] Pixi dry-run: `meth-e2e-dry-run` (includes `meth_matrix` when `run_meth_matrix: true`)
+- [x] Pixi dry-run: `meth-profile-dry-run`
+- [x] Pixi dry-run: `meth-e2e-dry-run` (includes `meth_matrix` when `run_meth_matrix: true` and `meth_profile` when `run_meth_profile: true`)
 - [ ] Slurm: single aggregate jobs for sample-wide stages (like `saturation`), not per analysis chunk.
 
 ---
@@ -251,9 +259,11 @@ Document any intentional numeric deviations from MethSCAn in stage notes.
 
 **Phase 2 validation:** MethSCAn `matrix --sparse` parity passed on `work/dd-met5-example` (2 VMRs, 19 non-zero entries).
 
-### Phase 3 — DMR + profile (not planned)
+### Phase 3 — DMR + profile
 
-**Cancelled by project decision (2026-06-25).** `meth_diff` and `meth_profile` will not be implemented; meth analysis scope ends at `meth_matrix`. Users needing DMR or methylation profiles should run MethSCAn or external tools on pipeline outputs (`meth/matrix/`, `meth/vmr/vmrs.bed`, `meth/regions/`).
+`meth_profile` is implemented (2026-10-01): optional stage, user-supplied BED, long CSV under `meth/profile/<label>/`. It does not call the MethSCAn package and does not plot.
+
+`meth_diff` stays **not planned**. Users who need DMRs should run MethSCAn or another external tool on pipeline outputs (`meth/matrix/`, `meth/vmr/vmrs.bed`, `meth/regions/`).
 
 ### Phase 4 — HPC + production config
 

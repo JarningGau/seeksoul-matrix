@@ -24,7 +24,7 @@ ALLC `context` column (col 4) is the full trinucleotide from ALLCools (`CGA`, `C
 | `meth_round_sites` | `false` | round ambiguous sites to majority vote |
 | `meth_main_chroms_only` | `false` | keep only chr1–19, chrX, chrY, chrM |
 | `meth_exclude_contigs` | `""` | comma-separated contigs to skip |
-| `meth_matrix_cores` | `8` | worker processes for per-cell ALLC reads (`--threads`); also used by `meth_scan` and `meth_matrix` |
+| `meth_matrix_cores` | `8` | worker processes for per-cell ALLC reads (`--threads`); also used by `meth_scan`, `meth_matrix`, and `meth_profile` |
 
 ## CLI flags (`scripts/allc_to_matrix.py`)
 
@@ -61,7 +61,8 @@ MethSCAn algorithms are reimplemented clean-room with citation; no MethSCAn GPL 
 
 - Foreign input formats (Bismark `.cov`, methylpy, biscuit).
 - `meth_matrix_filter` (cell filtering done in `allc_to_matrix`).
-- `meth_diff`, `meth_profile` (MethSCAn `diff` / `profile`) — not planned; see [`methscan_builtin_spec.md`](../../methscan_builtin_spec.md).
+- `meth_diff` (MethSCAn `diff`) — not planned; see [`methscan_builtin_spec.md`](../../methscan_builtin_spec.md).
+- `meth_profile` is a separate optional stage; see [`meth_profile.md`](meth_profile.md).
 
 ## Validation
 

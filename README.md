@@ -48,7 +48,7 @@ Re-run `setup-bismark` and `setup-allcools` after `pixi install` recreates `.pix
 
 ## Running the pipeline
 
-Twelve stages from `fastp_split` through `qc_summary`; stable I/O contracts and validation posture live under [`docs/developers/`](docs/developers/).
+Twelve stages from `fastp_split` through `qc_summary`; stable I/O contracts and validation posture live under [`docs/developers/`](docs/developers/). Optional methylation analysis after `qc_summary` adds `allc_to_matrix`, `meth_smooth`, `meth_scan`, `meth_matrix`, and `meth_profile` (`run_meth_analysis`, `run_meth_matrix`, `run_meth_profile`). `meth_profile` needs a user BED and writes a per-cell profile CSV.
 
 | Resource | Purpose |
 |----------|---------|

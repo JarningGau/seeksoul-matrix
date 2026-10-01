@@ -66,7 +66,8 @@ pixi run meth-allc-to-matrix-dry-run # allc_to_matrix script generation
 pixi run meth-smooth-dry-run        # meth_smooth script generation
 pixi run meth-scan-dry-run         # meth_scan script generation
 pixi run meth-matrix-dry-run       # meth_matrix script generation
-pixi run meth-e2e-dry-run          # --stage all with run_meth_analysis + run_meth_matrix
+pixi run meth-profile-dry-run      # meth_profile script generation
+pixi run meth-e2e-dry-run          # --stage all with run_meth_analysis + run_meth_matrix + run_meth_profile
 pixi run e2e-dry-run           # --stage all (local run.sh) dry-run
 pixi run e2e-slurm-dry-run     # --stage all (Slurm run.sbatch) dry-run
 ```
@@ -124,12 +125,13 @@ Implemented stages (`scripts/make_cmd.py`; stable I/O in `docs/developers/contra
 | `meth_smooth` | `scripts/meth_smooth.py` |
 | `meth_scan` | `scripts/meth_scan.py` |
 | `meth_matrix` | `scripts/meth_matrix.py` |
+| `meth_profile` | `scripts/meth_profile.py` |
 
 Per-stage and workflow validation detail: [`docs/developers/status.md`](docs/developers/status.md).
 
 `--stage all` generates per-stage scripts under `work/<sample>/commands/` plus a driver: `run.sh` (local) or `run.sbatch` (Slurm DAG). `--stage` also accepts a contiguous list of pipeline stages (canonical order; gaps are rejected); the driver covers only that range while script prefixes stay numbered from the full sequence. Analysis chunks are keyed by barcode prefix (`split_fastq_prefix_bases`, default `1`); `number_of_split_parts` controls read-order demux parallelism only. Barcode selection is **mutually exclusive**: `expected_cell_num` (default 3000, methylation-only path: count → estimate → split → merge → allc → saturation → qc_summary) or `gexcb` (RNA barcodes, split → merge → allc → saturation → qc_summary). Optional `force_cell_num` in workflow JSON takes top N barcodes by `aligned_reads` and overrides `expected_cell_num` threshold filtering in `estimated_cells`. Slurm emits per-chunk sbatch files for parallel stages and aggregate jobs for `estimated_cells` / `aggregate_ct_qc`. HPC multi-lane: submit each lane with a `--stage` list through `bismark_align`, then `examples/run_multi_lane.sh --phase harvest`; see [`examples/run_slurm_example.sh`](examples/run_slurm_example.sh).
 
-Twelve-stage driver (`fastp_split` → `qc_summary`) with barcode-prefix analysis chunks; optional meth analysis adds up to four stages through `meth_matrix` (`run_meth_analysis`, `run_meth_matrix`). MethSCAn `diff` / `profile` are out of scope. See [`docs/developers/status.md`](docs/developers/status.md) for methylation-only and gexcb validation posture.
+Twelve-stage driver (`fastp_split` → `qc_summary`) with barcode-prefix analysis chunks; optional meth analysis adds stages through `meth_matrix` and `meth_profile` (`run_meth_analysis`, `run_meth_matrix`, `run_meth_profile`). MethSCAn `diff` is out of scope. See [`docs/developers/status.md`](docs/developers/status.md) for methylation-only and gexcb validation posture.
 
 ## Coding Style & Naming Conventions
 
@@ -143,7 +145,7 @@ Follow **dbit-matrix** engineering patterns when implementing seeksoul-matrix; c
 
 ## Testing Guidelines
 
-No automated test suite yet. For current per-stage and workflow validation posture, see [`docs/developers/status.md`](docs/developers/status.md); historical evidence in [`docs/developers/logs.md`](docs/developers/logs.md). When adding tests, follow the template's regression style in `dbit-matrix/docs/maintenance/`. Before finishing workflow changes, run `scripts/make_cmd.py --version`, per-stage `--help` and `--dry-run`, and the relevant `pixi run *-dry-run` tasks (`fastp-dry-run`, `demux-dry-run`, `regroup-dry-run`, `bismark-align-dry-run`, `bam-sort-dry-run`, `count-mapped-reads-dry-run`, `estimated-cells-dry-run`, `split-bams-dry-run`, `merge-fr-bams-dry-run`, `bam-to-allc-dry-run`, `saturation-dry-run`, `qc-summary-dry-run`, `meth-allc-to-matrix-dry-run`, `meth-smooth-dry-run`, `meth-scan-dry-run`, `meth-matrix-dry-run`, `meth-e2e-dry-run`, `e2e-dry-run`, `e2e-slurm-dry-run`).
+No automated test suite yet. For current per-stage and workflow validation posture, see [`docs/developers/status.md`](docs/developers/status.md); historical evidence in [`docs/developers/logs.md`](docs/developers/logs.md). When adding tests, follow the template's regression style in `dbit-matrix/docs/maintenance/`. Before finishing workflow changes, run `scripts/make_cmd.py --version`, per-stage `--help` and `--dry-run`, and the relevant `pixi run *-dry-run` tasks (`fastp-dry-run`, `demux-dry-run`, `regroup-dry-run`, `bismark-align-dry-run`, `bam-sort-dry-run`, `count-mapped-reads-dry-run`, `estimated-cells-dry-run`, `split-bams-dry-run`, `merge-fr-bams-dry-run`, `bam-to-allc-dry-run`, `saturation-dry-run`, `qc-summary-dry-run`, `meth-allc-to-matrix-dry-run`, `meth-smooth-dry-run`, `meth-scan-dry-run`, `meth-matrix-dry-run`, `meth-profile-dry-run`, `meth-e2e-dry-run`, `e2e-dry-run`, `e2e-slurm-dry-run`).
 
 ## Lightweight Development Loop
 

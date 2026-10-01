@@ -2,6 +2,46 @@
 
 For current reliability, see [`status.md`](status.md). This file is the append-only history.
 
+## 2026-10-01 — add meth_profile
+
+**Task:** Add optional `meth_profile` (MethSCAn `profile` semantics) without calling the MethSCAn package.
+
+**Files changed:**
+- `scripts/lib/meth_matrix/profile.py`
+- `scripts/lib/meth_matrix/__init__.py`
+- `scripts/meth_profile.py`
+- `scripts/make_cmd.py`
+- `pixi.toml`
+- `workflow/dd_met5_test.json`
+- `workflow/dd_met5_slurm.json`
+- `workflow/dd_met5_slurm_large.json`
+- `workflow/dd_met5_gexcb_test.json`
+- `docs/developers/contracts.md`
+- `docs/developers/stage_notes/meth_profile.md`
+- `docs/developers/stage_notes/allc_to_matrix.md`
+- `docs/developers/status.md`
+- `docs/developers/logs.md`
+- `docs/methscan_builtin_spec.md`
+- `AGENTS.md`
+- `README.md`
+
+**Summary:**
+- Optional stage gated by `run_meth_profile` (requires `run_meth_analysis`). It reads `meth/matrix/{chrom}.npz` and a required user BED, and writes `meth/profile/<label>/profile.csv`.
+- Centered window of `meth_profile_width` bp (default 4000). Optional 1-indexed strand column flips `-` features. Even-width minus-strand drops the single genomic-start base that would land on `+width/2`.
+- `meth-smooth-dry-run`, `meth-scan-dry-run`, and `meth-matrix-dry-run` now pass `--run-meth-analysis` (and `--run-meth-matrix` for matrix) so those stages are in the sequence. `dd_met5_test.json` keeps the meth flags false.
+
+**Checks performed:**
+- Synthetic CSR vs numpy: widths 5 and 4, plus and minus strand, chromosome-start clipping, `threads` 1 and 3. Even-width minus-strand edge drop checked.
+- `work/dd-met5-example` CSR (22 cells): numpy match on chr2 (coverage sum 30) and chr1 (empty window) at `threads` 1 and 4, width 400, strand column 6. CSV rows 30; `meth_frac` matches `n_meth / n_total`. Scratch output removed.
+- `make_cmd.py --version` (0.1.0), `meth_profile.py --help` and `--dry-run`.
+- Missing `meth_profile_bed` raises `FileNotFoundError`. `run_meth_profile` without `run_meth_analysis` raises `ValueError`.
+- `pixi run meth-profile-dry-run`, `meth-smooth-dry-run`, `meth-scan-dry-run`, `meth-matrix-dry-run`, `meth-e2e-dry-run` (17 stages, `17_meth_profile.sh`), `e2e-dry-run` (12 stages, no profile), `e2e-slurm-dry-run`.
+- Slurm dry-run emits `16_meth_profile.sbatch` when `run_meth_matrix` is false. With a BED, the command includes `--regions-bed`, `--regions-label`, `--strand-column`, and `--width`.
+
+**Status:** done
+
+**Notes:** No MethSCAn CLI golden. Profile does not need `meth_smooth`. Peak memory is about `threads * n_cells * width * 8` bytes. Slurm `meth_profile` is not cluster-tested. `meth_diff` stays out of scope.
+
 ## 2026-09-30 — speed up allc_to_matrix
 
 **Task:** Read per-cell ALLC in parallel and build CSR without text COO chunks.

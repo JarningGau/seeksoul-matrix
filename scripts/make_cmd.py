@@ -43,6 +43,7 @@ METH_STAGE_SEQUENCE = [
 ]
 OPTIONAL_METH_STAGE_SEQUENCE = [
     "meth_matrix",
+    "meth_profile",
 ]
 ALL_STAGE_NAMES = [
     *BASE_STAGE_SEQUENCE,
@@ -69,6 +70,7 @@ STAGE_REQUIRED_FIELDS = {
     "meth_smooth": [],
     "meth_scan": [],
     "meth_matrix": [],
+    "meth_profile": [],
 }
 DEFAULT_BARCODE_WHITELIST = "whitelist/DD-MET5/U3CB_methylation.txt.gz"
 DEFAULT_EXPECTED_CELL_NUM = 3000
@@ -82,6 +84,7 @@ DEFAULT_METH_SCAN_VAR_THRESHOLD = 0.02
 DEFAULT_METH_SCAN_MIN_CELLS = 6
 DEFAULT_METH_SCAN_BRIDGE_GAPS = 0
 DEFAULT_METH_MATRIX_CORES = 8
+DEFAULT_METH_PROFILE_WIDTH = 4000
 
 
 def build_stage_sequence(settings: dict) -> list[str]:
@@ -93,7 +96,9 @@ def build_stage_sequence(settings: dict) -> list[str]:
     if settings.get("run_meth_analysis"):
         sequence = [*sequence, *METH_STAGE_SEQUENCE]
         if settings.get("run_meth_matrix"):
-            sequence = [*sequence, *OPTIONAL_METH_STAGE_SEQUENCE]
+            sequence.append("meth_matrix")
+        if settings.get("run_meth_profile"):
+            sequence.append("meth_profile")
     return sequence
 
 
@@ -471,7 +476,7 @@ def parse_args() -> argparse.Namespace:
         "--meth-matrix-cores",
         type=int,
         help=(
-            "CPU workers for allc_to_matrix, meth_scan, and meth_matrix. "
+            "CPU workers for allc_to_matrix, meth_scan, meth_matrix, and meth_profile. "
             f"Default: {DEFAULT_METH_MATRIX_CORES}."
         ),
     )
@@ -504,6 +509,44 @@ def parse_args() -> argparse.Namespace:
         action="store_true",
         default=None,
         help="Write dense four-table meth_matrix output instead of sparse (default).",
+    )
+    parser.add_argument(
+        "--run-meth-profile",
+        action="store_true",
+        default=None,
+        help=(
+            "Append meth_profile after the other meth stages when used with "
+            "--run-meth-analysis. Requires meth_profile_bed. Does not read "
+            "smoothed matrices."
+        ),
+    )
+    parser.add_argument(
+        "--meth-profile-script",
+        help="Path to meth_profile script. Default: scripts/meth_profile.py.",
+    )
+    parser.add_argument(
+        "--meth-profile-bed",
+        help="BED file of features for meth_profile. Required when the stage runs.",
+    )
+    parser.add_argument(
+        "--meth-profile-label",
+        help="Output label under meth/profile/. Default: BED basename.",
+    )
+    parser.add_argument(
+        "--meth-profile-width",
+        type=int,
+        help=(
+            "Profile width in bp for meth_profile. "
+            f"Default: {DEFAULT_METH_PROFILE_WIDTH}."
+        ),
+    )
+    parser.add_argument(
+        "--meth-profile-strand-column",
+        type=int,
+        help=(
+            "1-indexed BED strand column for meth_profile. "
+            "Unset means every region is treated as +."
+        ),
     )
     parser.add_argument(
         "--submit",
@@ -932,6 +975,26 @@ def build_meth_matrix_command(args: argparse.Namespace, sample_work: Path) -> st
         command.extend(["--regions-label", str(args.meth_regions_label)])
     if args.meth_matrix_dense:
         command.append("--dense")
+    return quoted(command)
+
+
+def build_meth_profile_command(args: argparse.Namespace, sample_work: Path) -> str:
+    command = [
+        sys.executable,
+        str(args.meth_profile_script),
+        "--work-path",
+        str(sample_work),
+        "--width",
+        str(args.meth_profile_width),
+        "--threads",
+        str(args.meth_matrix_cores),
+    ]
+    if args.meth_profile_bed and str(args.meth_profile_bed).strip():
+        command.extend(["--regions-bed", str(args.meth_profile_bed)])
+    if args.meth_profile_label and str(args.meth_profile_label).strip():
+        command.extend(["--regions-label", str(args.meth_profile_label)])
+    if args.meth_profile_strand_column:
+        command.extend(["--strand-column", str(args.meth_profile_strand_column)])
     return quoted(command)
 
 
@@ -1426,6 +1489,26 @@ def validate_inputs_for_stage(
                 "meth_matrix requires meth_regions_bed in workflow JSON or "
                 f"existing {sample_work / 'meth' / 'vmr' / 'vmrs.bed'}"
             )
+    elif stage == "meth_profile":
+        script_path = Path(settings["meth_profile_script"])
+        if not script_path.is_file():
+            raise FileNotFoundError(f"meth_profile_script not found: {script_path}")
+        matrix_dir = sample_work / "meth" / "matrix"
+        npz_files = list(matrix_dir.glob("*.npz"))
+        if not npz_files:
+            raise FileNotFoundError(
+                f"no CSR matrix files found under {matrix_dir}"
+            )
+        header_path = matrix_dir / "column_header.txt"
+        if not header_path.is_file():
+            raise FileNotFoundError(f"column_header.txt not found: {header_path}")
+        bed_value = str(settings.get("meth_profile_bed") or "").strip()
+        if not bed_value:
+            raise FileNotFoundError(
+                "meth_profile requires meth_profile_bed in workflow JSON or "
+                "--meth-profile-bed"
+            )
+        wic.require_file("meth_profile_bed", wic.resolve_config_path(bed_value))
     else:
         raise ValueError(f"unsupported stage for input validation: {stage}")
 
@@ -1590,6 +1673,24 @@ def resolve_settings(args: argparse.Namespace) -> dict:
             if args.meth_matrix_dense is not None
             else bool(cfg.get("meth_matrix_dense"))
         ),
+        "run_meth_profile": (
+            args.run_meth_profile
+            if args.run_meth_profile is not None
+            else bool(cfg.get("run_meth_profile"))
+        ),
+        "meth_profile_script": pick(
+            args.meth_profile_script, cfg.get("meth_profile_script")
+        ),
+        "meth_profile_bed": pick(args.meth_profile_bed, cfg.get("meth_profile_bed")),
+        "meth_profile_label": pick(
+            args.meth_profile_label, cfg.get("meth_profile_label")
+        ),
+        "meth_profile_width": pick(
+            args.meth_profile_width, cfg.get("meth_profile_width")
+        ),
+        "meth_profile_strand_column": pick(
+            args.meth_profile_strand_column, cfg.get("meth_profile_strand_column")
+        ),
         "slurm_partition": pick(args.slurm_partition, stage_slurm_cfg.get("partition")),
         "slurm_mem": pick(args.slurm_mem, stage_slurm_cfg.get("mem")),
         "slurm_cpus_per_task": pick(
@@ -1700,6 +1801,8 @@ def resolve_settings(args: argparse.Namespace) -> dict:
         settings["mito_chromosomes"] = settings["mito_chromosomes"] or "chrM"
     if settings.get("run_meth_matrix") and not settings.get("run_meth_analysis"):
         raise ValueError("run_meth_matrix requires run_meth_analysis to be true")
+    if settings.get("run_meth_profile") and not settings.get("run_meth_analysis"):
+        raise ValueError("run_meth_profile requires run_meth_analysis to be true")
 
     if (
         stage in (
@@ -1707,10 +1810,12 @@ def resolve_settings(args: argparse.Namespace) -> dict:
             "meth_smooth",
             "meth_scan",
             "meth_matrix",
+            "meth_profile",
             "all",
         )
         or settings.get("run_meth_analysis")
         or settings.get("run_meth_matrix")
+        or settings.get("run_meth_profile")
     ):
         settings["allc_to_matrix_script"] = (
             settings["allc_to_matrix_script"] or "scripts/allc_to_matrix.py"
@@ -1788,6 +1893,27 @@ def resolve_settings(args: argparse.Namespace) -> dict:
         settings["meth_regions_bed"] = settings.get("meth_regions_bed") or ""
         settings["meth_regions_label"] = settings.get("meth_regions_label") or ""
         settings["meth_matrix_dense"] = bool(settings.get("meth_matrix_dense"))
+
+    if stage in ("meth_profile", "all") or settings.get("run_meth_profile"):
+        settings["meth_profile_script"] = (
+            settings["meth_profile_script"] or "scripts/meth_profile.py"
+        )
+        settings["meth_profile_bed"] = settings.get("meth_profile_bed") or ""
+        settings["meth_profile_label"] = settings.get("meth_profile_label") or ""
+        settings["meth_profile_width"] = int(
+            settings["meth_profile_width"]
+            if settings["meth_profile_width"] is not None
+            else DEFAULT_METH_PROFILE_WIDTH
+        )
+        if settings["meth_profile_width"] < 1:
+            raise ValueError("meth_profile_width must be >= 1")
+        strand_column = settings.get("meth_profile_strand_column")
+        if strand_column in (None, ""):
+            settings["meth_profile_strand_column"] = None
+        else:
+            settings["meth_profile_strand_column"] = int(strand_column)
+            if settings["meth_profile_strand_column"] < 1:
+                raise ValueError("meth_profile_strand_column must be >= 1")
 
     settings["_stage_sequence"] = build_stage_sequence(settings)
     if settings["_barcode_mode"] == "gexcb":
@@ -1885,6 +2011,13 @@ def build_stage_passthrough_args(argv: list[str]) -> list[str]:
         "--submit",
         "--dry-run",
         "--skip-workdir-input-checks",
+        "--run-meth-analysis",
+        "--meth-round-sites",
+        "--meth-main-chroms-only",
+        "--meth-smooth-use-weights",
+        "--run-meth-matrix",
+        "--meth-matrix-dense",
+        "--run-meth-profile",
     }
     index = 0
     while index < len(argv):
@@ -2067,6 +2200,12 @@ def driver_scripts_for_stage(
             script
             for script in scripts
             if script.name.startswith(f"{prefix}_meth_matrix")
+        ]
+    if stage_name == "meth_profile":
+        return [
+            script
+            for script in scripts
+            if script.name.startswith(f"{prefix}_meth_profile")
         ]
     return scripts
 
@@ -3140,6 +3279,46 @@ def main() -> int:
                 ),
                 slurm_error=settings["slurm_error"].replace(
                     "%x", f"seeksoul_meth_matrix_{settings['sample_id']}"
+                ),
+            )
+            generate_slurm_script(command, script_path, log_dir, slurm_args)
+        generated_scripts.append(script_path)
+    elif settings["stage"] == "meth_profile":
+        command_args = argparse.Namespace(
+            meth_profile_script=settings["meth_profile_script"],
+            meth_profile_bed=settings["meth_profile_bed"],
+            meth_profile_label=settings["meth_profile_label"],
+            meth_profile_width=settings["meth_profile_width"],
+            meth_profile_strand_column=settings["meth_profile_strand_column"],
+            meth_matrix_cores=settings["meth_matrix_cores"],
+        )
+        command = build_meth_profile_command(command_args, sample_work)
+        if settings["runner"] == "local":
+            script_path = command_dir / stage_script_name(settings, "meth_profile")
+        else:
+            script_path = command_dir / stage_script_name(
+                settings, "meth_profile", suffix="sbatch"
+            )
+        print(f"[make_cmd] runner={settings['runner']}")
+        print(f"[make_cmd] stage={settings['stage']}")
+        print(f"[make_cmd] sample_id={settings['sample_id']}")
+        print(f"[make_cmd] script={script_path}")
+        print(f"[make_cmd] command={command}")
+        if settings["dry_run"]:
+            return 0
+        if settings["runner"] == "local":
+            generate_local_script(command, script_path)
+        else:
+            slurm_args = argparse.Namespace(
+                job_name=f"seeksoul_meth_profile_{settings['sample_id']}",
+                slurm_partition=settings["slurm_partition"],
+                slurm_mem=settings["slurm_mem"],
+                slurm_cpus_per_task=settings["slurm_cpus_per_task"],
+                slurm_output=settings["slurm_output"].replace(
+                    "%x", f"seeksoul_meth_profile_{settings['sample_id']}"
+                ),
+                slurm_error=settings["slurm_error"].replace(
+                    "%x", f"seeksoul_meth_profile_{settings['sample_id']}"
                 ),
             )
             generate_slurm_script(command, script_path, log_dir, slurm_args)

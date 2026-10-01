@@ -20,12 +20,14 @@ Per-stage confidence (what was actually exercised):
 - meth_smooth: local run on `work/dd-met5-example` (50 cells, CG matrix) + `meth-smooth-dry-run`; MethSCAn `smooth` parity **passed** (max abs diff `0.0` on main chroms vs v1.1.0 reference)
 - meth_scan: local run on `work/dd-met5-example` (2 VMRs, default params) + `meth-scan-dry-run`; MethSCAn `scan` parity **passed** (exact BED match vs v1.1.0 reference)
 - meth_matrix: local sparse run on `work/dd-met5-example` (2 VMRs, `vmrs.bed` fallback) + `meth-matrix-dry-run`; MethSCAn `matrix --sparse` parity **passed** (19 entries; exact `(row, col, mfrac)` vs v1.1.0). Dense mode smoke-tested (`--dense`); included in sixteen-stage local e2e (2026-06-25)
+- meth_profile: local accumulation on `work/dd-met5-example` CSR (22 cells, CG) matches an independent numpy count of the same windows (`threads` 1 and 4; width 400; `+`/`-` strand and a chromosome-start interval; chr2 coverage sum 30, chr1 window empty). CLI `--dry-run` and `meth-profile-dry-run` pass. Included in `meth-e2e-dry-run` as stage 17. No MethSCAn CLI golden. Slurm path dry-run only
 
 Workflow drivers:
 
 - methylation-only `run.sh` (`workflow/dd_met5_test.json`): twelve stages through `qc_summary` (stage script generation + local runs)
 - methylation-only with `run_meth_analysis: true`: fifteen-stage script generation validated (`meth-e2e-dry-run`: `allc_to_matrix` → `meth_smooth` → `meth_scan`)
 - methylation-only with `run_meth_analysis` + `run_meth_matrix`: sixteen-stage local e2e **passed** (`make_cmd --submit` on `work/dd-met5-example`, ~10 min; 50 cells, 2 VMRs, sparse region matrix)
+- methylation-only with `run_meth_analysis` + `run_meth_matrix` + `run_meth_profile`: seventeen-stage script generation validated (`meth-e2e-dry-run`; `meth_profile` is stage 17). Real profile check was the direct stage on the existing CSR, not a full `--stage all` submit
 - methylation-only `run.sbatch` (`dd_met5_test.json`): HPC submit validated through **qc_summary** (twelve stages); meth analysis Slurm paths dry-run only
 - **gexcb** `run.sh` (`workflow/dd_met5_gexcb_test.json`): ten-stage local e2e **passed** (`make_cmd --stage all --submit` from raw FASTQ, ~6 min; 22 RNA barcodes, CtoT≈0.997, CpG mc≈77%); workflow JSON aligned with `dd_met5_test.json` resource/meth keys (except `gexcb` barcode mode)
 - **gexcb + meth analysis** (`dd_met5_gexcb_test.json` with `--run-meth-analysis --run-meth-matrix`): fourteen-stage local e2e **passed** (10 base + 4 meth on `work/dd-met5-example`; 22 cells, 1 VMR chr2, sparse region matrix; `meth_scan_min_cells=2` for small gexcb cohort)
@@ -36,6 +38,7 @@ Workflow drivers:
 - **gexcb Slurm path** (`dd_met5_gexcb_test.json`): not cluster-tested
 - **gexcb + meth analysis Slurm path**: dry-run only
 - **Meth analysis Slurm path** (`run_meth_analysis: true`): command generation dry-run only; sixteen-stage cluster submit not validated
+- **`meth_profile` Slurm path**: command generation dry-run only (`16_meth_profile.sbatch` when `meth_matrix` is off)
 - **`--stage` contiguous list** (multi-stage driver, not `all`): dry-run validated (lane prefix through `bismark_align`; tail from `bam_sort`)
 - **Automated tests:** none yet (manual validation only)
 
@@ -46,7 +49,7 @@ Workflow drivers:
 - `generate-dataset`, merged ALLC matrix, per-cell JSON/HTML reports ([`stage_notes/bam_to_allc.md`](stage_notes/bam_to_allc.md), [`stage_notes/qc_summary.md`](stage_notes/qc_summary.md))
 - Sample-wide barcode union across analysis chunks in per-chunk stages ([`chunk_model.md`](chunk_model.md))
 - `meth_matrix_filter` (MethSCAn `filter`) — skipped; cell QC in `allc_to_matrix` via `filtered_barcode`
-- `meth_diff` / `meth_profile` (MethSCAn `diff` / `profile`) — **not planned**; meth analysis scope ends at `meth_matrix` ([`methscan_builtin_spec.md`](../methscan_builtin_spec.md))
+- `meth_diff` (MethSCAn `diff`) — **not planned**; see [`methscan_builtin_spec.md`](../methscan_builtin_spec.md)
 - Multi-pair FASTQ input is not a workflow-driver feature. HPC: submit each lane with `make_cmd --runner slurm --submit` and a contiguous `--stage` list through `bismark_align`, then [`examples/run_multi_lane.sh`](../../examples/run_multi_lane.sh) `--phase harvest` (`samtools cat` into the final sample). Cookbook: [`examples/run_slurm_example.sh`](../../examples/run_slurm_example.sh). Local `--phase lanes|all` still runs `--runner local`. Stage scripts are unchanged.
 
 ## Do not change silently

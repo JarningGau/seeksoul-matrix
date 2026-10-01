@@ -470,3 +470,44 @@ Contract:
 - Fails if no BED is resolved and `vmrs.bed` is absent.
 
 See also: [stage notes](stage_notes/meth_matrix.md) · [chunk model](chunk_model.md)
+
+### `meth_profile` {#meth_profile}
+
+Purpose: per-cell average methylation around a set of genomic features (MethSCAn `profile` equivalent). Output is a long CSV for external plotting. The stage does not draw figures.
+
+Inputs:
+
+- `work/<sample>/meth/matrix/{chrom}.npz`
+- `work/<sample>/meth/matrix/column_header.txt`
+- BED features: workflow key `meth_profile_bed` (required; no `vmrs.bed` fallback)
+
+Workflow keys (when enabled via `run_meth_analysis` + `run_meth_profile`):
+
+| Key | Default |
+|-----|---------|
+| `run_meth_profile` | `false` |
+| `meth_profile_bed` | `""` (required when the stage runs) |
+| `meth_profile_label` | `""` (default: BED basename) |
+| `meth_profile_width` | `4000` |
+| `meth_profile_strand_column` | unset (every region treated as `+`) |
+| `meth_matrix_cores` | `8` |
+
+Outputs under `work/<sample>/meth/profile/<label>/`:
+
+| Path | Description |
+|------|-------------|
+| `profile.csv` | long table: `position`, `cell_name`, `meth_frac`, `n_meth`, `n_total`; optional `label` column when the stage script `--label` is set |
+| `run_info.json` | BED path, width, strand column, region counts, row count, runtime |
+
+Contract:
+
+- Single sample-level job. Requires `allc_to_matrix` output only (not `meth_smooth` or `meth_scan`).
+- Ordered after `meth_matrix` when both optional stages are enabled.
+- `run_meth_profile` requires `run_meth_analysis: true`.
+- Each feature is centered at `(start + end) // 2` and covered by `meth_profile_width` bp starting at `center - width // 2`. CSR row index equals the BED coordinate, same as `meth_matrix`.
+- `position` is relative to the center. When `meth_profile_strand_column` is set, `-` features are flipped so upstream is negative. `.` is treated as `+`.
+- Rows are emitted only where `n_total > 0`.
+- Fails if `meth_profile_bed` is missing, or if no BED chromosome matches a CSR matrix.
+- BED intervals do not need to be pre-sorted.
+
+See also: [stage notes](stage_notes/meth_profile.md) · [chunk model](chunk_model.md)

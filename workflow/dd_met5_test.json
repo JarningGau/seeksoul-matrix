@@ -108,6 +108,11 @@
             "partition": "amd-ep5",
             "mem": "16G",
             "cpus_per_task": 8
+        },
+        "meth_profile": {
+            "partition": "amd-ep5",
+            "mem": "16G",
+            "cpus_per_task": 8
         }
     },
     "run_meth_analysis": false,
@@ -126,5 +131,10 @@
     "meth_matrix_cores": 8,
     "meth_regions_bed": "",
     "meth_regions_label": "",
-    "meth_matrix_dense": false
+    "meth_matrix_dense": false,
+    "run_meth_profile": false,
+    "meth_profile_bed": "",
+    "meth_profile_label": "",
+    "meth_profile_width": 4000,
+    "meth_profile_strand_column": null
 }
