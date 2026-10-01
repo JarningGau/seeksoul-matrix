@@ -123,9 +123,20 @@ def resolve_driver_stages(requested: list[str], full_sequence: list[str]) -> lis
     order = {name: index for index, name in enumerate(full_sequence)}
     missing_mode = [name for name in requested if name not in order]
     if missing_mode:
-        raise ValueError(
-            f"stage {missing_mode[0]} is not in this barcode-mode sequence"
-        )
+        hints = {
+            "meth_matrix": "pass --run-meth-analysis --run-meth-matrix "
+            "(or set run_meth_analysis/run_meth_matrix in the workflow JSON)",
+            "meth_profile": "pass --run-meth-analysis --run-meth-profile "
+            "(or set run_meth_analysis/run_meth_profile in the workflow JSON)",
+            "allc_to_matrix": "pass --run-meth-analysis",
+            "meth_smooth": "pass --run-meth-analysis",
+            "meth_scan": "pass --run-meth-analysis",
+        }
+        hint = hints.get(missing_mode[0])
+        message = f"stage {missing_mode[0]} is not in this barcode-mode sequence"
+        if hint:
+            message += f"; it is not enabled in this run: {hint}"
+        raise ValueError(message)
     selected = sorted(requested, key=lambda name: order[name])
     expected = full_sequence[order[selected[0]] : order[selected[-1]] + 1]
     if selected != expected:

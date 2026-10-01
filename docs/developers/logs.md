@@ -2,6 +2,23 @@
 
 For current reliability, see [`status.md`](status.md). This file is the append-only history.
 
+## 2026-10-01 — clearer error for disabled meth stages in `make_cmd.py`
+
+**Files changed:**
+- `scripts/make_cmd.py`
+
+**Summary:**
+- `--stage meth_profile` (also `meth_matrix`, `allc_to_matrix`, `meth_smooth`, `meth_scan`) failed with an opaque "not in this barcode-mode sequence" error when the workflow JSON had the optional stage disabled (e.g. `run_meth_profile: false` in `dd_met5_slurm_large.json`). Error now names the flag to pass. Behavior unchanged otherwise.
+
+**Checks performed:**
+- `make_cmd.py --stage meth_profile` on `dd_met5_slurm_large.json` without flag: new hint message.
+- Same with `--run-meth-profile --dry-run`: generates `17_meth_profile.sbatch`.
+- `pixi run meth-profile-dry-run`
+
+**Status:** done
+
+**Notes:** Fix for the user's HPC command is to add `--run-meth-profile`.
+
 ## 2026-10-01 — add meth_profile
 
 **Task:** Add optional `meth_profile` (MethSCAn `profile` semantics) without calling the MethSCAn package.
@@ -1240,3 +1257,4 @@ For current reliability, see [`status.md`](status.md). This file is the append-o
 **Status:** done
 
 **Notes:** Workflow JSON uses placeholder FASTQ paths; real runs need existing `r1`/`r2` or omit `--skip-workdir-input-checks` only when inputs are present.
+
