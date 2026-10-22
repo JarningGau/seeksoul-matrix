@@ -14,6 +14,8 @@ Clean-room port of MethSCAn `prepare`: per-cell ALLC → per-chromosome CSR spar
 
 ALLC `context` column (col 4) is the full trinucleotide from ALLCools (`CGA`, `CTT`, …). CG filtering uses **prefix match** (`context.startswith("CG")`), not equality.
 
+**CG strand merge (`meth_merge_cg_strands`, default on):** each CG dyad is keyed by the Watson (+) C coordinate (requires `meth_context=CG`). A `-` strand CG at `N+1` maps to `N`; `mc`/`cov` from both strands are summed, then `encode_site` runs once. With `--no-merge-cg-strands` / `meth_merge_cg_strands: false`, strand is ignored and `+`/`-` keep their ALLC positions (typically `N` and `N+1`).
+
 ## Defaults and workflow keys
 
 | Key | Default | Role |
@@ -23,6 +25,7 @@ ALLC `context` column (col 4) is the full trinucleotide from ALLCools (`CGA`, `C
 | `meth_chunksize` | `10000000` | recorded in `run_info.json`; does not change the matrix or runtime |
 | `meth_round_sites` | `false` | round ambiguous sites to majority vote |
 | `meth_main_chroms_only` | `false` | keep only chr1–19, chrX, chrY, chrM |
+| `meth_merge_cg_strands` | `true` | collapse CG +/- dyads onto Watson (+) coord (sum mc/cov); requires `meth_context=CG` |
 | `meth_exclude_contigs` | `""` | comma-separated contigs to skip |
 | `meth_matrix_cores` | `8` | worker processes for per-cell ALLC reads (`--threads`); also used by `meth_scan`, `meth_matrix`, and `meth_profile` |
 
@@ -35,6 +38,7 @@ ALLC `context` column (col 4) is the full trinucleotide from ALLCools (`CGA`, `C
 | `--cell-names` | explicit barcode list file |
 | `--barcode-mode` | `methylation_only` or `gexcb` barcode source |
 | `--threads` | worker processes for per-cell ALLC reads (default 1) |
+| `--merge-cg-strands` / `--no-merge-cg-strands` | collapse CG +/- dyads onto Watson (+) coordinate (default on) |
 | `--dry-run` | print resolved paths and exit |
 
 ## Barcode selection

@@ -2,6 +2,26 @@
 
 For current reliability, see [`status.md`](status.md). This file is the append-only history.
 
+## 2026-10-22 — allc_to_matrix CG +/- strand merge (default on)
+
+**Files changed:**
+- `scripts/lib/meth_matrix/allc.py`, `scripts/lib/meth_matrix/store.py`
+- `scripts/allc_to_matrix.py`, `scripts/make_cmd.py`
+- `workflow/dd_met5_test.json`, `workflow/dd_met5_slurm.json`, `workflow/dd_met5_slurm_large.json`, `workflow/dd_met5_gexcb_test.json`
+- `docs/developers/contracts.md`, `docs/developers/stage_notes/allc_to_matrix.md`, `docs/methscan_builtin_spec.md`, `docs/developers/status.md`
+
+**Summary:**
+- `meth_merge_cg_strands` / `--merge-cg-strands` (default **on**): collapse CG dyads onto the Watson (+) C coordinate by summing `mc`/`cov` before `encode_site`. Requires `meth_context=CG`. Disable with `meth_merge_cg_strands: false` / `--no-merge-cg-strands`.
+
+**Checks performed:**
+- Synthetic ALLC: `+`@100 only → row 100; `-`@101 only → row 100; both with `mc=1,cov=2` discarded (ambiguous/tie); unequal coverage with `round_sites` → majority vote at Watson coord.
+- CLI `--merge-cg-strands` + `meth_context=CHG` raises.
+- `pixi run meth-allc-to-matrix-dry-run` emits `--merge-cg-strands`.
+
+**Status:** done
+
+**Notes:** Downstream stages unchanged; they consume CSR by coordinate.
+
 ## 2026-10-01 — meth_profile writes `profile.csv.gz`
 
 **Files changed:**

@@ -434,6 +434,17 @@ def parse_args() -> argparse.Namespace:
         help="Comma-separated contigs to exclude in allc_to_matrix.",
     )
     parser.add_argument(
+        "--meth-merge-cg-strands",
+        action=argparse.BooleanOptionalAction,
+        default=None,
+        help=(
+            "Collapse CG +/- dyads onto the Watson (+) coordinate in "
+            "allc_to_matrix (default: on when unset in workflow; "
+            "requires meth_context=CG). "
+            "Use --no-meth-merge-cg-strands to disable."
+        ),
+    )
+    parser.add_argument(
         "--meth-smooth-script",
         help="Path to meth_smooth script. Default: scripts/meth_smooth.py.",
     )
@@ -922,6 +933,10 @@ def build_allc_to_matrix_command(
         command.append("--round-sites")
     if args.meth_main_chroms_only:
         command.append("--main-chroms-only")
+    if getattr(args, "meth_merge_cg_strands", True):
+        command.append("--merge-cg-strands")
+    else:
+        command.append("--no-merge-cg-strands")
     if getattr(args, "meth_exclude_contigs", None):
         command.extend(["--exclude-contigs", str(args.meth_exclude_contigs)])
     return quoted(command)
@@ -1652,6 +1667,11 @@ def resolve_settings(args: argparse.Namespace) -> dict:
         "meth_exclude_contigs": pick(
             args.meth_exclude_contigs, cfg.get("meth_exclude_contigs")
         ),
+        "meth_merge_cg_strands": (
+            args.meth_merge_cg_strands
+            if args.meth_merge_cg_strands is not None
+            else bool(cfg.get("meth_merge_cg_strands", True))
+        ),
         "meth_smooth_script": pick(args.meth_smooth_script, cfg.get("meth_smooth_script")),
         "meth_smooth_bandwidth": pick(
             args.meth_smooth_bandwidth, cfg.get("meth_smooth_bandwidth")
@@ -1841,7 +1861,15 @@ def resolve_settings(args: argparse.Namespace) -> dict:
             raise ValueError("meth_chunksize must be > 0")
         settings["meth_round_sites"] = bool(settings["meth_round_sites"])
         settings["meth_main_chroms_only"] = bool(settings["meth_main_chroms_only"])
+        settings["meth_merge_cg_strands"] = bool(settings["meth_merge_cg_strands"])
         settings["meth_exclude_contigs"] = settings["meth_exclude_contigs"] or ""
+        if settings["meth_merge_cg_strands"] and str(
+            settings["meth_context"]
+        ).strip().upper() != "CG":
+            raise ValueError(
+                "meth_merge_cg_strands requires meth_context=CG "
+                f"(got {settings['meth_context']!r})"
+            )
         settings["meth_smooth_script"] = (
             settings["meth_smooth_script"] or "scripts/meth_smooth.py"
         )
@@ -3139,6 +3167,7 @@ def main() -> int:
             meth_chunksize=settings["meth_chunksize"],
             meth_round_sites=settings["meth_round_sites"],
             meth_main_chroms_only=settings["meth_main_chroms_only"],
+            meth_merge_cg_strands=settings["meth_merge_cg_strands"],
             meth_exclude_contigs=settings["meth_exclude_contigs"],
             meth_matrix_cores=settings["meth_matrix_cores"],
         )

@@ -336,6 +336,7 @@ Workflow keys (when enabled via `run_meth_analysis`):
 | `meth_chunksize` | `10000000` |
 | `meth_round_sites` | `false` |
 | `meth_main_chroms_only` | `false` |
+| `meth_merge_cg_strands` | `true` |
 | `meth_exclude_contigs` | `""` |
 | `meth_matrix_cores` | `8` |
 
@@ -353,7 +354,8 @@ Contract:
 - Single sample-level job; globs ALLC across analysis chunks; rejects duplicate barcodes across chunks.
 - Optional post-`qc_summary` stage; gated by workflow key `run_meth_analysis` (default `false`).
 - `meth_matrix_cores` is the per-cell ALLC reader process count (`--threads`). `meth_chunksize` is recorded in `run_info.json` and does not change outputs.
-- MethSCAn `prepare` parity validated on `work/dd-met5-example` (50 cells, all-context comparison passed). CSR values stay on that same encoding.
+- When `meth_merge_cg_strands` is true (default; requires `meth_context=CG`), CG `+`/`-` dyads are collapsed onto the Watson (+) coordinate by summing `mc`/`cov` before site encoding. Set `false` / `--no-merge-cg-strands` to keep strands as separate ALLC positions (MethSCAn `prepare` position parity).
+- MethSCAn `prepare` parity validated on `work/dd-met5-example` (50 cells, all-context comparison passed) with merge off.
 
 See also: [stage notes](stage_notes/allc_to_matrix.md) · [chunk model](chunk_model.md)
 

@@ -74,6 +74,7 @@ Tab-separated rows (ALLCools `bam-to-allc`):
 
 - For each genomic position and cell, after context filter: `+1` methylated, `-1` unmethylated, `0` missing / ambiguous.
 - **Context filter (default):** `context == "CG"` (workflow key `meth_context`, default `CG`). Document whether CHG/CHH modes are in scope for v1.
+- **CG strand merge:** `meth_merge_cg_strands` (default `true`) collapses ALLC CG `+`/`-` dyads onto the Watson (+) C coordinate by summing `mc`/`cov` before encoding. Set `false` for MethSCAn `prepare` position parity (strands as separate sites).
 - **Ambiguous sites:** `mc > 0` and `mc < cov` → discard unless `--round-sites` (same rule as MethSCAn `prepare`).
 - **Ties:** `mc == cov - mc` → always discard.
 
@@ -207,6 +208,7 @@ Document any intentional numeric deviations from MethSCAn in stage notes.
 | `meth_context` | `CG` | `allc_to_matrix` |
 | `meth_chunksize` | `10000000` | `allc_to_matrix` |
 | `meth_round_sites` | `false` | `allc_to_matrix` |
+| `meth_merge_cg_strands` | `true` | `allc_to_matrix` (CG +/- dyad collapse; requires `meth_context=CG`) |
 | `meth_smooth_bandwidth` | `1000` | `meth_smooth` |
 | `meth_scan_bandwidth` | `2000` | `meth_scan` |
 | `meth_scan_stepsize` | `100` | `meth_scan` |

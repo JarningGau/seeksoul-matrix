@@ -43,6 +43,15 @@ def encode_site(mc: int, cov: int, *, round_sites: bool) -> int | None:
     return 1 if n_meth > 0 else -1
 
 
+def require_merge_cg_context(meth_context: str) -> None:
+    """Raise if merge-cg-strands is used with a non-CG context filter."""
+    if meth_context.strip().upper() != "CG":
+        raise ValueError(
+            "merge_cg_strands requires meth_context=CG "
+            f"(got {meth_context!r})"
+        )
+
+
 def _context_needles(meth_context: str) -> tuple[bytes, ...] | None:
     """Byte prefixes that a kept context field must contain.
 
@@ -63,6 +72,16 @@ def _context_needles(meth_context: str) -> tuple[bytes, ...] | None:
     return (upper, lower)
 
 
+def _dyad_pos(pos: int, strand: str) -> int | None:
+    """Map a CG site to the Watson (+) coordinate; None if invalid."""
+    if strand == "+":
+        return pos
+    if strand == "-":
+        dyad = pos - 1
+        return dyad if dyad >= 1 else None
+    return None
+
+
 def iter_allc_sites(
     allc_path: Path,
     *,
@@ -70,8 +89,25 @@ def iter_allc_sites(
     round_sites: bool = False,
     exclude_contigs: set[str] | None = None,
     main_chroms_only: bool = False,
+    merge_cg_strands: bool = True,
 ) -> Iterator[tuple[str, int, int]]:
-    """Yield ``(chrom, pos, meth_value)`` tuples from one gzipped ALLC file."""
+    """Yield ``(chrom, pos, meth_value)`` tuples from one gzipped ALLC file.
+
+    When ``merge_cg_strands`` is true (default), CG +/- dyads are collapsed onto
+    the Watson (+) coordinate by summing ``mc``/``cov`` before encoding.
+    Requires ``meth_context=CG``.
+    """
+    if merge_cg_strands:
+        require_merge_cg_context(meth_context)
+        yield from _iter_merged_cg_sites(
+            allc_path,
+            meth_context=meth_context,
+            round_sites=round_sites,
+            exclude_contigs=exclude_contigs,
+            main_chroms_only=main_chroms_only,
+        )
+        return
+
     exclude = exclude_contigs or set()
     needles = _context_needles(meth_context)
     opener = gzip.open if str(allc_path).lower().endswith(".gz") else open
@@ -105,6 +141,63 @@ def iter_allc_sites(
             yield chrom, pos, meth_value
 
 
+def _iter_merged_cg_sites(
+    allc_path: Path,
+    *,
+    meth_context: str,
+    round_sites: bool,
+    exclude_contigs: set[str] | None,
+    main_chroms_only: bool,
+) -> Iterator[tuple[str, int, int]]:
+    """Accumulate CG +/- coverage per Watson coordinate, then encode."""
+    exclude = exclude_contigs or set()
+    needles = _context_needles(meth_context)
+    # (chrom, dyad_pos) -> [mc, cov]
+    pooled: dict[tuple[str, int], list[int]] = {}
+    opener = gzip.open if str(allc_path).lower().endswith(".gz") else open
+    with opener(allc_path, "rb") as handle:
+        for raw_line in handle:
+            if needles is not None and not any(needle in raw_line for needle in needles):
+                continue
+            line = raw_line.strip()
+            if not line or line.startswith(b"#"):
+                continue
+            fields = line.split(b"\t")
+            if len(fields) < 6:
+                continue
+            try:
+                chrom = fields[0].decode("utf-8")
+                strand = fields[2].decode("utf-8")
+                context = fields[3].decode("utf-8")
+                pos = int(fields[1])
+                mc = int(fields[4])
+                cov = int(fields[5])
+            except (UnicodeDecodeError, ValueError):
+                continue
+            if main_chroms_only and not _is_main_chrom(chrom):
+                continue
+            if chrom in exclude:
+                continue
+            if not context_matches(context, meth_context):
+                continue
+            dyad_pos = _dyad_pos(pos, strand)
+            if dyad_pos is None:
+                continue
+            key = (chrom, dyad_pos)
+            bucket = pooled.get(key)
+            if bucket is None:
+                pooled[key] = [mc, cov]
+            else:
+                bucket[0] += mc
+                bucket[1] += cov
+
+    for (chrom, dyad_pos), (mc, cov) in pooled.items():
+        meth_value = encode_site(mc, cov, round_sites=round_sites)
+        if meth_value is None:
+            continue
+        yield chrom, dyad_pos, meth_value
+
+
 def read_cell_sites(
     allc_path: Path,
     *,
@@ -112,6 +205,7 @@ def read_cell_sites(
     round_sites: bool = False,
     exclude_contigs: set[str] | None = None,
     main_chroms_only: bool = False,
+    merge_cg_strands: bool = True,
 ) -> dict[str, tuple[np.ndarray, np.ndarray]]:
     """Read one ALLC into per-chromosome ``(pos int64, value int8)`` arrays."""
     positions: dict[str, list[int]] = defaultdict(list)
@@ -122,6 +216,7 @@ def read_cell_sites(
         round_sites=round_sites,
         exclude_contigs=exclude_contigs,
         main_chroms_only=main_chroms_only,
+        merge_cg_strands=merge_cg_strands,
     ):
         positions[chrom].append(pos)
         values[chrom].append(meth_value)

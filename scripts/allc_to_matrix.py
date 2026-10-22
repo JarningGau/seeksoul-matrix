@@ -13,6 +13,7 @@ if str(SCRIPT_DIR) not in sys.path:
     sys.path.insert(0, str(SCRIPT_DIR))
 
 from lib.meth_matrix import barcode_from_allc_path, build_matrix_store
+from lib.meth_matrix.allc import require_merge_cg_context
 
 DEFAULT_METH_CONTEXT = "CG"
 DEFAULT_CHUNKSIZE = 10_000_000
@@ -84,6 +85,16 @@ def parse_args() -> argparse.Namespace:
         "--main-chroms-only",
         action="store_true",
         help="Keep only main chromosomes (chr1-19, chrX, chrY, chrM).",
+    )
+    parser.add_argument(
+        "--merge-cg-strands",
+        action=argparse.BooleanOptionalAction,
+        default=True,
+        help=(
+            "Collapse CG +/- dyads onto the Watson (+) coordinate by summing "
+            "mc/cov before encoding (default: on). Requires --meth-context CG. "
+            "Use --no-merge-cg-strands to keep strands as separate positions."
+        ),
     )
     parser.add_argument(
         "--dry-run",
@@ -197,8 +208,11 @@ def main() -> int:
         raise ValueError("--chunksize must be > 0")
     if args.threads < 1:
         raise ValueError("--threads must be >= 1")
+    if args.merge_cg_strands:
+        require_merge_cg_context(args.meth_context)
 
     work_path = Path(args.work_path) if args.work_path else None
+
     allc_dir = Path(args.allc_dir) if args.allc_dir else None
 
     if work_path is not None:
@@ -245,6 +259,7 @@ def main() -> int:
     print(f"[allc_to_matrix] threads={args.threads}")
     print(f"[allc_to_matrix] round_sites={int(args.round_sites)}")
     print(f"[allc_to_matrix] main_chroms_only={int(args.main_chroms_only)}")
+    print(f"[allc_to_matrix] merge_cg_strands={int(args.merge_cg_strands)}")
     print(f"[allc_to_matrix] exclude_contigs={sorted(exclude_contigs)}")
 
     if barcode_source == "all_discovered_allc":
@@ -265,6 +280,7 @@ def main() -> int:
         round_sites=args.round_sites,
         exclude_contigs=exclude_contigs,
         main_chroms_only=args.main_chroms_only,
+        merge_cg_strands=args.merge_cg_strands,
         threads=args.threads,
         run_info_extra={
             "gather_mode": gather_mode,

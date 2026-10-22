@@ -12,24 +12,32 @@ import numpy as np
 import pandas as pd
 import scipy.sparse as sp_sparse
 
-from .allc import read_cell_sites
+from .allc import read_cell_sites, require_merge_cg_context
 
 
 def _read_cell_worker(
-    task: tuple[str, str, bool, tuple[str, ...], bool],
+    task: tuple[str, str, bool, tuple[str, ...], bool, bool],
 ) -> dict[str, tuple[np.ndarray, np.ndarray]]:
-    allc_path, meth_context, round_sites, exclude_contigs, main_chroms_only = task
+    (
+        allc_path,
+        meth_context,
+        round_sites,
+        exclude_contigs,
+        main_chroms_only,
+        merge_cg_strands,
+    ) = task
     return read_cell_sites(
         Path(allc_path),
         meth_context=meth_context,
         round_sites=round_sites,
         exclude_contigs=set(exclude_contigs),
         main_chroms_only=main_chroms_only,
+        merge_cg_strands=merge_cg_strands,
     )
 
 
 def _iter_cell_sites(
-    tasks: Sequence[tuple[str, str, bool, tuple[str, ...], bool]],
+    tasks: Sequence[tuple[str, str, bool, tuple[str, ...], bool, bool]],
     *,
     threads: int,
 ):
@@ -107,6 +115,7 @@ def build_matrix_store(
     round_sites: bool = False,
     exclude_contigs: set[str] | None = None,
     main_chroms_only: bool = False,
+    merge_cg_strands: bool = True,
     threads: int = 1,
     run_info_extra: dict | None = None,
 ) -> dict[str, Path]:
@@ -121,13 +130,22 @@ def build_matrix_store(
         raise ValueError("no ALLC inputs provided")
     if threads < 1:
         raise ValueError("threads must be >= 1")
+    if merge_cg_strands:
+        require_merge_cg_context(meth_context)
 
     output_dir.mkdir(parents=True, exist_ok=True)
     begin_time = datetime.now(timezone.utc)
     n_cells = len(cell_names)
     exclude_key = tuple(sorted(exclude_contigs or []))
     tasks = [
-        (str(path), meth_context, round_sites, exclude_key, main_chroms_only)
+        (
+            str(path),
+            meth_context,
+            round_sites,
+            exclude_key,
+            main_chroms_only,
+            merge_cg_strands,
+        )
         for path in allc_paths
     ]
     cell_results = list(_iter_cell_sites(tasks, threads=threads))
@@ -167,6 +185,7 @@ def build_matrix_store(
         round_sites=round_sites,
         exclude_contigs=sorted(exclude_contigs or []),
         main_chroms_only=main_chroms_only,
+        merge_cg_strands=merge_cg_strands,
         threads=threads,
         cell_names=list(cell_names),
         allc_paths=[str(path) for path in allc_paths],

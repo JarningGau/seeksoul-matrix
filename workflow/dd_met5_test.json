@@ -121,6 +121,7 @@
     "meth_chunksize": 10000000,
     "meth_round_sites": false,
     "meth_main_chroms_only": false,
+    "meth_merge_cg_strands": true,
     "meth_exclude_contigs": "",
     "meth_smooth_bandwidth": 1000,
     "meth_scan_bandwidth": 2000,
